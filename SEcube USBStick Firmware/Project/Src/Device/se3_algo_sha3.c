@@ -1,4 +1,3 @@
-#pragma once
 #include "se3_core.h"
 #include "se3_algo_sha3.h"
 
@@ -52,7 +51,6 @@ uint16_t se3_algo_Sha3_256_update(
     uint16_t datain1_len, const uint8_t* datain1,
     uint16_t datain2_len, const uint8_t* datain2,
     uint16_t* dataout_len, uint8_t* dataout) {
-
     B5_tSha3Ctx* sha = (B5_tSha3Ctx*)ctx;
     if (datain1_len > 0) {
         if (B5_SHA3_RES_OK != B5_Sha3_Update(sha, datain1, datain1_len)) {

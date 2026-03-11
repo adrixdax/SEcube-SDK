@@ -456,9 +456,12 @@ void L1::L1Digest(size_t input_size, std::shared_ptr<uint8_t[]> input_data, SEcu
 		throw digestExc;
 	}
 	uint32_t encSessId = 0;
-	std::unique_ptr<uint8_t[]> output_data = make_unique<uint8_t[]>(64);
+	size_t expected_len = digest.get_digest_len();
+	if (expected_len > 4096) {
+		throw std::invalid_argument("Lunghezza eccessiva (> 4096 byte).");
+	}
+	std::unique_ptr<uint8_t[]> output_data = make_unique<uint8_t[]>(expected_len);
 	uint8_t *input = input_data.get(); // alias for input data
-	uint8_t *output = output_data.get(); // alias for digest
 	try {
 		switch(digest.algorithm){
 			case L1Algorithms::Algorithms::HMACSHA256:

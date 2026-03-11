@@ -42,7 +42,7 @@ class SEcube_digest {
 public:
 	uint32_t key_id;
 	uint16_t algorithm;
-	std::array<uint8_t, 64> digest; // 64 byte bastano per il massimo (SHA3-512)
+	std::array<uint8_t, 4096> digest; // 64 byte bastano per il massimo (SHA3-512)
 	std::array<uint8_t, 32> digest_nonce;
 	bool usenonce;
 	size_t shake_requested_len;

@@ -215,7 +215,10 @@ enum {
 	SE3_ALGO_SHA3_384 = 6,          /**< SHA3-384 digest */
 	SE3_ALGO_SHA3_512 = 7,          /**< SHA3-512 digest */
 
-	SE3_ALGO_MAX = 8                /**< Updated Value for SEfile compatibility */
+	/* SHAKE Family */
+	SE3_ALGO_SHAKE_128 = 8,
+	SE3_ALGO_SHAKE_256 = 9,
+	SE3_ALGO_MAX = 10                /**< Updated Value for SEfile compatibility */
 };
 /**
  *  @}

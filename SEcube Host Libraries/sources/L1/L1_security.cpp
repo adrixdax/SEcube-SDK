@@ -449,7 +449,9 @@ void L1::L1Digest(size_t input_size, std::shared_ptr<uint8_t[]> input_data, SEcu
 		digest.algorithm != L1Algorithms::Algorithms::SHA3_224 &&
 		digest.algorithm != L1Algorithms::Algorithms::SHA3_256 &&
 		digest.algorithm != L1Algorithms::Algorithms::SHA3_384 &&
-		digest.algorithm != L1Algorithms::Algorithms::SHA3_512)
+		digest.algorithm != L1Algorithms::Algorithms::SHA3_512 &&
+		digest.algorithm != L1Algorithms::Algorithms::SHAKE_128 &&
+		digest.algorithm != L1Algorithms::Algorithms::SHAKE_256)
 	{
 		throw digestExc;
 	}
@@ -487,6 +489,12 @@ void L1::L1Digest(size_t input_size, std::shared_ptr<uint8_t[]> input_data, SEcu
 				break;
 			case L1Algorithms::Algorithms::SHA3_512:
 				L1CryptoInit(digest.algorithm, 0, L1Key::Id::NULL_ID, encSessId);
+				break;
+			case L1Algorithms::Algorithms::SHAKE_128:
+				L1CryptoInit(digest.algorithm, (uint16_t)digest.get_digest_len(), L1Key::Id::NULL_ID, encSessId);
+				break;
+			case L1Algorithms::Algorithms::SHAKE_256:
+				L1CryptoInit(digest.algorithm, (uint16_t)digest.get_digest_len(), L1Key::Id::NULL_ID, encSessId);
 				break;
 			default:
 				throw digestExc;

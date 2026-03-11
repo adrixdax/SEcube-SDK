@@ -36,6 +36,8 @@
  *  generate the digest is HMAC-SHA256 because this algorithm requires the usage of a shared secret (a key) and a nonce (to avoid
  *  replay), hence the attributes of this class. If you simply want to compute the digest with SHA-256, then the nonce and
  *  the key are not used at all, therefore the only attribute you care about is the digest. */
+#include <vector>
+
 class SEcube_digest {
 public:
 	uint32_t key_id;
@@ -43,15 +45,16 @@ public:
 	std::array<uint8_t, 64> digest; // 64 byte bastano per il massimo (SHA3-512)
 	std::array<uint8_t, 32> digest_nonce;
 	bool usenonce;
+	size_t shake_requested_len;
 
 	size_t get_digest_len() const {
 		switch (algorithm) {
-			case L1Algorithms::Algorithms::SHA3_224:
-				return 28;
-			case L1Algorithms::Algorithms::SHA3_384:
-				return 48;
-			case L1Algorithms::Algorithms::SHA3_512:
-				return 64;
+			case L1Algorithms::Algorithms::SHA3_224: return 28;
+			case L1Algorithms::Algorithms::SHA3_256: return 32;
+			case L1Algorithms::Algorithms::SHA3_384: return 48;
+			case L1Algorithms::Algorithms::SHA3_512: return 64;
+			case L1Algorithms::Algorithms::SHAKE_128: return this->shake_requested_len;
+			case L1Algorithms::Algorithms::SHAKE_256: return this->shake_requested_len;
 			default:
 				return 32;
 		}

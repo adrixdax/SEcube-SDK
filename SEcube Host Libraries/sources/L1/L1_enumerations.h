@@ -492,7 +492,9 @@ namespace L1Algorithms {
 			SHA3_256 = 5,       /**< SHA3-256 digest  */
 			SHA3_384 = 6,       /**< SHA3-384 digest  */
 			SHA3_512 = 7,       /**< SHA3-512 digest  */
-			ALGORITHM_MAX = 8   /**< Updated value required by SEfile */
+			SHAKE_128 = 8,		/**< SHAKE_128 digest  */
+			SHAKE_256 = 9,		/**< SHAKE_256 digest  */
+			ALGORITHM_MAX = 10   /**< Updated value required by SEfile */
 		 };
 	};
 }

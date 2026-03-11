@@ -51,7 +51,10 @@ extern enum {
 	SE3_SHA3_224,
 	SE3_SHA3_256,
 	SE3_SHA3_384,
-	SE3_SHA3_512
+	SE3_SHA3_512,
+	/* SHAKE Family Extension */
+	SE3_SHAKE_128,
+	SE3_SHAKE_256
 } se3_crypto_algorithm;
 
 // ---- records ----

@@ -29,6 +29,7 @@
 #include "se3_algo_HmacSha256.h"
 #include "se3_algo_AesHmacSha256s.h"
 #include "se3_algo_sha3.h"
+#include "se3_algo_shake.h"
 #include "se3_common.h"
 
 SE3_SECURITY_INFO se3_security_info;
@@ -101,6 +102,23 @@ se3_algo_descriptor algo_table[SE3_ALGO_MAX] = {
     "SHA3-512",
     SE3_CRYPTO_TYPE_DIGEST,
     64,                       // Digest size per SHA3-512
+    {0, 0, 0, 0, 0, 0, 0, 0, 0, 0}},
+{ // ID 8: SHAKE128
+    se3_algo_Shake128_init,    //
+    se3_algo_Shake128_update,      //
+    sizeof(se3_shake_ctx),       // 212-216 byte
+    "SHAKE128",
+    SE3_CRYPTO_TYPE_DIGEST,    // Trattato come digest a lunghezza variabile
+    0,                         // 0 indica lunghezza variabile (XOF)
+    {0, 0, 0, 0, 0, 0, 0, 0, 0, 0}},
+
+{ // ID 9: SHAKE256
+    se3_algo_Shake256_init,    //
+    se3_algo_Shake256_update,      //
+    sizeof(se3_shake_ctx),
+    "SHAKE256",
+    SE3_CRYPTO_TYPE_DIGEST,
+    0,                         // XOF mode
     {0, 0, 0, 0, 0, 0, 0, 0, 0, 0}}
 };
 

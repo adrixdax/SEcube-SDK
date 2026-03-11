@@ -1,3 +1,4 @@
+#pragma once
 #include "se3_core.h"
 #include "se3_algo_sha3.h"
 

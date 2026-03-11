@@ -34,16 +34,17 @@
 using namespace std;
 
 // RENAME THIS TO main()
-int digest_example() {
+int main() {
 
 	/* we will compute the digest of this string...you can take this string and use it as input of other tools that compute the
 	 * SHA-256 digest (i.e. online tools), so you can check that the results are the same. you can't do the same thing with
 	 * HMAC-SHA-256 because it involves the usage of a key (that you can select) stored inside the SEcube device, moreover it also
 	 * required a nonce (a random number used only once) that determines also the result. in order to check that HMAC-SHA-256 works
 	 * correctly, we will recompute its digest using the same key and the same nonce. */
-	char digest_input[] = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Proin placerat ornare nunc vitae placerat. "
-			"Phasellus tincidunt dictum dui at tristique. Fusce at neque ac nisl hendrerit porta in quis ipsum. In at sollicitudin "
-			"nunc, et feugiat augue placerat.";
+	//char digest_input[] = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Proin placerat ornare nunc vitae placerat. "
+	//		"Phasellus tincidunt dictum dui at tristique. Fusce at neque ac nisl hendrerit porta in quis ipsum. In at sollicitudin "
+	//		"nunc, et feugiat augue placerat.";
+	char digest_input[] = "Hello World!";
 	int testsize = strlen(digest_input);
 
 	/* we recommend using smart pointers to manage L0 and L1 objects in order
@@ -133,6 +134,12 @@ int digest_example() {
 		cout << "\nPlease enter the number associated to the algorithm for the digest computation:" << endl;
 		cout << "0) SHA-256" << endl;
 		cout << "1) HMAC-SHA-256" << endl;
+		cout << "2) SHA3-224" << endl;
+		cout << "3) SHA3-256" << endl;
+		cout << "4) SHA3-384" << endl;
+		cout << "5) SHA3-512" << endl;
+
+		sel = 0;
 		if(!(cin >> sel)){
 			cout << "Input error...quit." << endl;
 			l1->L1Logout();
@@ -146,7 +153,6 @@ int digest_example() {
 		SEcube_digest temp; // this is used to verify the digest in case of HMAC-SHA-256 recomputing the digest using the nonce set by the previous computation
 		switch(sel){
 			case 0:
-				// when using SHA-256, you don't need to set anything else than the algorithm
 				data_digest.algorithm = L1Algorithms::Algorithms::SHA256;
 				l1->L1Digest(testsize, input_data, data_digest);
 				break;
@@ -186,24 +192,37 @@ int digest_example() {
 				data_digest.usenonce = false; // we don't want to provide a specific nonce manually
 				data_digest.algorithm = L1Algorithms::Algorithms::HMACSHA256;
 				l1->L1Digest(testsize, input_data, data_digest);
-				// this is used to verify the digest in case of HMAC-SHA-256 recomputing the digest using the nonce set by the previous computation
-				temp.key_id = keys.at(ch).first;
-				temp.usenonce = true;
-				temp.algorithm = L1Algorithms::Algorithms::HMACSHA256;
-				temp.digest_nonce = data_digest.digest_nonce;
-				l1->L1Digest(testsize, input_data, temp);
 				break;
-			// notice that, after calling the L1Digest() function, our digest will be stored inside the Digest object
+			case 2:
+				// Integrazione del tuo SHA3-256
+				data_digest.algorithm = L1Algorithms::Algorithms::SHA3_224;
+				l1->L1Digest(testsize, input_data, data_digest);
+				break;
+			case 3:
+				// Integrazione del tuo SHA3-256
+				data_digest.algorithm = L1Algorithms::Algorithms::SHA3_256;
+				l1->L1Digest(testsize, input_data, data_digest);
+				break;
+			case 4:
+				// Integrazione del tuo SHA3-512
+				data_digest.algorithm = L1Algorithms::Algorithms::SHA3_384;
+				l1->L1Digest(testsize, input_data, data_digest);
+				break;
+			case 5:
+				// Integrazione del tuo SHA3-256
+				data_digest.algorithm = L1Algorithms::Algorithms::SHA3_512;
+				l1->L1Digest(testsize, input_data, data_digest);
+				break;
 			default:
 				cout << "Input error...quit." << endl;
 				l1->L1Logout();
 				return -1;
 		}
-
+		cout << "\nPlaintext: " << digest_input << endl;
 		this_thread::sleep_for(chrono::milliseconds(1000));
 		cout << "\n\nThe hex value of the digest is:" << endl;
-		for(uint8_t i : data_digest.digest){
-			printf("%02x ", i);
+		for (unsigned int i = 0 ; i<data_digest.get_digest_len(); i++) {
+			printf("%02x ", data_digest.digest[i]);
 		}
 
 		// print also recomputed digest (if any)

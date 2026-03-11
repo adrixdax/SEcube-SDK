@@ -35,6 +35,7 @@
 #include "aes256.h"
 #include "sha256.h"
 #include "pbkdf2.h"
+#include "sha3.h"
 
 enum {
 	SE3_SESSIONS_BUF = (32*1024),  ///< session buffer size
@@ -45,8 +46,13 @@ extern enum {
 	SE3_AES256,
 	SE3_CRC16,
 	SE3_PBKDF2,
-	SE3_SHA256
-}se3_crypto_algorithm;
+	SE3_SHA256,
+	/* SHA-3 Family Extensions */
+	SE3_SHA3_224,
+	SE3_SHA3_256,
+	SE3_SHA3_384,
+	SE3_SHA3_512
+} se3_crypto_algorithm;
 
 // ---- records ----
 

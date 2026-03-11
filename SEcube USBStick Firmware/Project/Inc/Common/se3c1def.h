@@ -204,11 +204,18 @@ enum {
  *  @{
  */
 enum {
-    SE3_ALGO_AES = 0,  ///< AES
-	SE3_ALGO_SHA256 = 1,  ///< SHA256
-	SE3_ALGO_HMACSHA256 = 2,  ///< HMAC-SHA256
-	SE3_ALGO_AES_HMACSHA256 = 3,  ///< AES + HMAC-SHA256
-    SE3_ALGO_MAX = 4
+	SE3_ALGO_AES = 0,               ///< AES
+	SE3_ALGO_SHA256 = 1,            ///< SHA256
+	SE3_ALGO_HMACSHA256 = 2,         ///< HMAC-SHA-256
+	SE3_ALGO_AES_HMACSHA256 = 3,    ///< AES + HMAC-SHA-256
+
+	/* SHA-3 Family */
+	SE3_ALGO_SHA3_224 = 4,          /**< SHA3-224 digest */
+	SE3_ALGO_SHA3_256 = 5,          /**< SHA3-256 digest */
+	SE3_ALGO_SHA3_384 = 6,          /**< SHA3-384 digest */
+	SE3_ALGO_SHA3_512 = 7,          /**< SHA3-512 digest */
+
+	SE3_ALGO_MAX = 8                /**< Updated Value for SEfile compatibility */
 };
 /**
  *  @}

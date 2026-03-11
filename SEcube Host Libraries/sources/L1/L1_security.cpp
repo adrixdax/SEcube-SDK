@@ -42,15 +42,12 @@ void L1::L1CryptoInit(uint16_t algorithm, uint16_t mode, uint32_t keyId, uint32_
 	uint8_t* _mode = (uint8_t*)&mode;
 	uint8_t* _keyId = (uint8_t*)&keyId;
 	uint16_t respLen = 0;
-
 	this->base.FillSessionBuffer(_algo,	L1Response::Offset::DATA + L1Crypto::InitRequestOffset::ALGO, 2);
 	this->base.FillSessionBuffer(_mode,	L1Response::Offset::DATA + L1Crypto::InitRequestOffset::MODE, 2);
 	this->base.FillSessionBuffer(_keyId, L1Response::Offset::DATA + L1Crypto::InitRequestOffset::KEY_ID, 4);
-
 	L1CryptoInitException cryptoInitExc;
 	try {
 		TXRXData(L1Commands::Codes::CRYPTO_INIT, L1Crypto::InitRequestSize::SIZE, 0, &respLen); //send the data
-
 	}
 	catch(L1Exception& e) {
 		throw cryptoInitExc;
@@ -447,11 +444,17 @@ void L1::L1Decrypt(SEcube_ciphertext& encrypted_data, size_t& plaintext_size, st
 
 void L1::L1Digest(size_t input_size, std::shared_ptr<uint8_t[]> input_data, SEcube_digest& digest) {
 	L1DigestException digestExc;
-	if(((digest.algorithm != L1Algorithms::Algorithms::HMACSHA256) && (digest.algorithm != L1Algorithms::Algorithms::SHA256))){
+	if (digest.algorithm != L1Algorithms::Algorithms::SHA256 &&
+		digest.algorithm != L1Algorithms::Algorithms::HMACSHA256 &&
+		digest.algorithm != L1Algorithms::Algorithms::SHA3_224 &&
+		digest.algorithm != L1Algorithms::Algorithms::SHA3_256 &&
+		digest.algorithm != L1Algorithms::Algorithms::SHA3_384 &&
+		digest.algorithm != L1Algorithms::Algorithms::SHA3_512)
+	{
 		throw digestExc;
 	}
 	uint32_t encSessId = 0;
-	std::unique_ptr<uint8_t[]> output_data = make_unique<uint8_t[]>(32);
+	std::unique_ptr<uint8_t[]> output_data = make_unique<uint8_t[]>(64);
 	uint8_t *input = input_data.get(); // alias for input data
 	uint8_t *output = output_data.get(); // alias for digest
 	try {
@@ -473,24 +476,40 @@ void L1::L1Digest(size_t input_size, std::shared_ptr<uint8_t[]> input_data, SEcu
 			case L1Algorithms::Algorithms::SHA256:
 				L1CryptoInit(digest.algorithm, 0, L1Key::Id::NULL_ID, encSessId);
 				break;
+			case L1Algorithms::Algorithms::SHA3_224:
+				L1CryptoInit(digest.algorithm, 0, L1Key::Id::NULL_ID, encSessId);
+				break;
+			case L1Algorithms::Algorithms::SHA3_256:
+				L1CryptoInit(digest.algorithm, 0, L1Key::Id::NULL_ID, encSessId);
+				break;
+			case L1Algorithms::Algorithms::SHA3_384:
+				L1CryptoInit(digest.algorithm, 0, L1Key::Id::NULL_ID, encSessId);
+				break;
+			case L1Algorithms::Algorithms::SHA3_512:
+				L1CryptoInit(digest.algorithm, 0, L1Key::Id::NULL_ID, encSessId);
+				break;
 			default:
 				throw digestExc;
 		}
-		size_t curr_chunk = input_size < (L1Crypto::UpdateSize::DATAIN - B5_SHA256_DIGEST_SIZE) ? input_size : (L1Crypto::UpdateSize::DATAIN - B5_SHA256_DIGEST_SIZE);
-		uint16_t curr_len = 0;
+		size_t max_l1_chunk = L1Crypto::UpdateSize::DATAIN;
+		size_t curr_chunk = input_size < max_l1_chunk ? input_size : max_l1_chunk;
+		uint16_t out_len = 0;
+
 		do {
-			if(input_size - curr_chunk){ // still in the middle of data
-				L1CryptoUpdate(encSessId, 0, curr_chunk, input, 0, nullptr, &curr_len, output);
-			}
-			else{ // last chunk of data
-				L1CryptoUpdate(encSessId, L1Crypto::UpdateFlags::FINIT, curr_chunk, input, 0, nullptr, &curr_len, output);
-			}
+			// Se è l'ultimo blocco, impostiamo il flag FINIT per far calcolare l'hash
+			uint16_t flags = (input_size <= curr_chunk) ? L1Crypto::UpdateFlags::FINIT : 0;
+
+			// Chiamata all'SDK che comunica con il firmware del SEcube
+			L1CryptoUpdate(encSessId, flags, (uint16_t)curr_chunk, input, 0, nullptr, &out_len, output_data.get());
+
 			input_size -= curr_chunk;
-			output += curr_chunk;
 			input += curr_chunk;
-			curr_chunk = input_size < (L1Crypto::UpdateSize::DATAIN - B5_SHA256_DIGEST_SIZE) ? input_size : (L1Crypto::UpdateSize::DATAIN - B5_SHA256_DIGEST_SIZE);
+			curr_chunk = input_size < max_l1_chunk ? input_size : max_l1_chunk;
 		} while(input_size > 0);
-		for(int i=0; i<32; i++){ // copy the digest
+
+		size_t digest_size = digest.get_digest_len();
+		cout << "Size: " << digest_size << endl;
+		for(size_t i = 0; i < digest_size; i++) {
 			digest.digest[i] = output_data[i];
 		}
 	}

@@ -32,6 +32,7 @@
 
 #include "L0_base.h"
 #include <memory>
+#include <string>
 #include <time.h>
 
 L0Base::L0Base() {

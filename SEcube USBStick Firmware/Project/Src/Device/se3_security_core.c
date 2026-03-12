@@ -28,49 +28,105 @@
 #include "se3_algo_sha256.h"
 #include "se3_algo_HmacSha256.h"
 #include "se3_algo_AesHmacSha256s.h"
+#include "se3_algo_sha3.h"
+#include "se3_algo_shake.h"
 #include "se3_common.h"
+#include "se3_arith_polyvec.h"
 
 SE3_SECURITY_INFO se3_security_info;
 
 /* Cryptographic algorithms handlers and display info for the security core ONLY. */
 se3_algo_descriptor algo_table[SE3_ALGO_MAX] = {
-	{
-		se3_algo_Aes_init,
-		se3_algo_Aes_update,
-		sizeof(B5_tAesCtx),
-		"AES",
-		SE3_CRYPTO_TYPE_BLOCKCIPHER,
-		B5_AES_BLK_SIZE,
-		{B5_AES_128*8, B5_AES_192*8, B5_AES_256*8, 0, 0, 0, 0, 0, 0, 0}}, // key sizes are manually assigned, change them according to the algorithms supported by the SEcube
-	{
-		se3_algo_Sha256_init,
-		se3_algo_Sha256_update,
-		sizeof(B5_tSha256Ctx),
-		"SHA256",
-		SE3_CRYPTO_TYPE_DIGEST,
-		B5_SHA256_DIGEST_SIZE,
-		{0, 0, 0, 0, 0, 0, 0, 0, 0, 0}},
-	{
-		se3_algo_HmacSha256_init,
-		se3_algo_HmacSha256_update,
-		sizeof(B5_tHmacSha256Ctx),
-		"HMAC-SHA256",
-		SE3_CRYPTO_TYPE_DIGEST,
-		B5_SHA256_DIGEST_SIZE,
-		{B5_AES_128*8, B5_AES_192*8, B5_AES_256*8, 0, 0, 0, 0, 0, 0, 0}},
-	{
-		se3_algo_AesHmacSha256s_init,
-		se3_algo_AesHmacSha256s_update,
-		sizeof(B5_tAesCtx) + sizeof(B5_tHmacSha256Ctx) + 2 * B5_AES_256 + sizeof(uint16_t) + 3 * sizeof(uint8_t),
-		"AES-HMAC-SHA256",
-		SE3_CRYPTO_TYPE_BLOCKCIPHER_AUTH,
-		B5_AES_BLK_SIZE,
-		{B5_AES_128*8, B5_AES_192*8, B5_AES_256*8, 0, 0, 0, 0, 0, 0, 0}}
+    {
+        se3_algo_Aes_init,
+        se3_algo_Aes_update,
+        sizeof(B5_tAesCtx),
+        "AES",
+        SE3_CRYPTO_TYPE_BLOCKCIPHER,
+        B5_AES_BLK_SIZE,
+        {B5_AES_128*8, B5_AES_192*8, B5_AES_256*8, 0, 0, 0, 0, 0, 0, 0}}, // key sizes are manually assigned, change them according to the algorithms supported by the SEcube
+    {
+        se3_algo_Sha256_init,
+        se3_algo_Sha256_update,
+        sizeof(B5_tSha256Ctx),
+        "SHA256",
+        SE3_CRYPTO_TYPE_DIGEST,
+        B5_SHA256_DIGEST_SIZE,
+        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0}},
+    {
+        se3_algo_HmacSha256_init,
+        se3_algo_HmacSha256_update,
+        sizeof(B5_tHmacSha256Ctx),
+        "HMAC-SHA256",
+        SE3_CRYPTO_TYPE_DIGEST,
+        B5_SHA256_DIGEST_SIZE,
+        {B5_AES_128*8, B5_AES_192*8, B5_AES_256*8, 0, 0, 0, 0, 0, 0, 0}},
+    {
+        se3_algo_AesHmacSha256s_init,
+        se3_algo_AesHmacSha256s_update,
+        sizeof(B5_tAesCtx) + sizeof(B5_tHmacSha256Ctx) + 2 * B5_AES_256 + sizeof(uint16_t) + 3 * sizeof(uint8_t),
+        "AES-HMAC-SHA256",
+        SE3_CRYPTO_TYPE_BLOCKCIPHER_AUTH,
+        B5_AES_BLK_SIZE,
+        {B5_AES_128*8, B5_AES_192*8, B5_AES_256*8, 0, 0, 0, 0, 0, 0, 0}},
+{ // ID 4: SHA3-224
+    se3_algo_Sha3_224_init,
+    se3_algo_Sha3_224_update,
+    sizeof(B5_tSha3Ctx),      // 200 bytes state + control variables
+    "SHA3-224",
+    SE3_CRYPTO_TYPE_DIGEST,
+    28,                       // Digest size per SHA3-224
+    {0, 0, 0, 0, 0, 0, 0, 0, 0, 0}},
+
+{ // ID 5: SHA3-256
+    se3_algo_Sha3_256_init,
+    se3_algo_Sha3_256_update,
+    sizeof(B5_tSha3Ctx),
+    "SHA3-256",
+    SE3_CRYPTO_TYPE_DIGEST,
+    32,                       // Digest size per SHA3-256
+    {0, 0, 0, 0, 0, 0, 0, 0, 0, 0}},
+
+{ // ID 6: SHA3-384
+    se3_algo_Sha3_384_init,
+    se3_algo_Sha3_384_update,
+    sizeof(B5_tSha3Ctx),
+    "SHA3-384",
+    SE3_CRYPTO_TYPE_DIGEST,
+    48,                       // Digest size per SHA3-384
+    {0, 0, 0, 0, 0, 0, 0, 0, 0, 0}},
+
+{ // ID 7: SHA3-512
+    se3_algo_Sha3_512_init,
+    se3_algo_Sha3_512_update,
+    sizeof(B5_tSha3Ctx),
+    "SHA3-512",
+    SE3_CRYPTO_TYPE_DIGEST,
+    64,                       // Digest size per SHA3-512
+    {0, 0, 0, 0, 0, 0, 0, 0, 0, 0}},
+{ // ID 8: SHAKE128
+    se3_algo_Shake128_init,    //
+    se3_algo_Shake128_update,      //
+    sizeof(se3_shake_ctx),       // 212-216 byte
+    "SHAKE128",
+    SE3_CRYPTO_TYPE_DIGEST,    // Trattato come digest a lunghezza variabile
+    0,                         // 0 indica lunghezza variabile (XOF)
+    {0, 0, 0, 0, 0, 0, 0, 0, 0, 0}},
+
+{ // ID 9: SHAKE256
+    se3_algo_Shake256_init,    //
+    se3_algo_Shake256_update,      //
+    sizeof(se3_shake_ctx),
+    "SHAKE256",
+    SE3_CRYPTO_TYPE_DIGEST,
+    0,                         // XOF mode
+    {0, 0, 0, 0, 0, 0, 0, 0, 0, 0}},
 };
 
 union {
-    B5_tSha256Ctx sha;
-    B5_tAesCtx aes;
+    B5_tSha256Ctx sha;     // Contesto SHA-2 classica
+    B5_tSha3Ctx   sha3;    // Nuovo contesto SHA-3 (Keccak)
+    B5_tAesCtx    aes;     // Contesto AES
 } ctx;
 
 void se3_security_core_init(){

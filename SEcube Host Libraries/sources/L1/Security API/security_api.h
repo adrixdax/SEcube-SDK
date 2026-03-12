@@ -36,15 +36,29 @@
  *  generate the digest is HMAC-SHA256 because this algorithm requires the usage of a shared secret (a key) and a nonce (to avoid
  *  replay), hence the attributes of this class. If you simply want to compute the digest with SHA-256, then the nonce and
  *  the key are not used at all, therefore the only attribute you care about is the digest. */
-class SEcube_digest{
+#include <vector>
+
+class SEcube_digest {
 public:
-	uint32_t key_id; /**< The ID of the key that is used to generate the digest with HMAC-SHA256. */
-	uint16_t algorithm; /**< The algorithm used to generate the digest. */
-	std::array<uint8_t, B5_SHA256_DIGEST_SIZE> digest; /**< The digest of the data. The size is B5_SHA256_DIGEST_SIZE because current digest algorithms always produce a result on 32 bytes. */
-	std::array<uint8_t, B5_SHA256_DIGEST_SIZE> digest_nonce; /**< This is the nonce that is used to compute the authenticated digest with HMAC-SHA256. */
-	bool usenonce; /**< Use the nonce parameter as input to generate the digest. This can be useful if you already have a digest that was computed on the data
-	you are working on, and you want to recompute it to check if the data have been modified. So you also need to set the same nonce that was used in the previous
-	computation. */
+	uint32_t key_id;
+	uint16_t algorithm;
+	std::array<uint8_t, 4096> digest; // 64 byte bastano per il massimo (SHA3-512)
+	std::array<uint8_t, 32> digest_nonce;
+	bool usenonce;
+	size_t shake_requested_len;
+
+	size_t get_digest_len() const {
+		switch (algorithm) {
+			case L1Algorithms::Algorithms::SHA3_224: return 28;
+			case L1Algorithms::Algorithms::SHA3_256: return 32;
+			case L1Algorithms::Algorithms::SHA3_384: return 48;
+			case L1Algorithms::Algorithms::SHA3_512: return 64;
+			case L1Algorithms::Algorithms::SHAKE_128: return this->shake_requested_len;
+			case L1Algorithms::Algorithms::SHAKE_256: return this->shake_requested_len;
+			default:
+				return 32;
+		}
+	}
 };
 
 /** This class implements a L1Ciphertext object, which is used exclusively by L1Encrypt() and L1Decrypt().

@@ -484,12 +484,18 @@ namespace L1Algorithms {
 	/** Algorithms supported by the SEcube device. */
 	struct Algorithms {
 		enum {
-		    AES = 0,  			/**< AES cipher */
-			SHA256 = 1,  		/**< SHA-256 digest  */
-			HMACSHA256 = 2,  	/**< HMAC-SHA-256 digest */
-			AES_HMACSHA256 = 3, /**< AES + HMAC + SHA-256 */
-			ALGORITHM_MAX = 4	/**< Value required by SEfile */
-		};
+			AES = 0,            /**< AES cipher */
+			SHA256 = 1,         /**< SHA-256 digest  */
+			HMACSHA256 = 2,      /**< HMAC-SHA-256 digest */
+			AES_HMACSHA256 = 3,   /**< AES + HMAC + SHA-256 */
+			SHA3_224 = 4,       /**< SHA3-224 digest  */
+			SHA3_256 = 5,       /**< SHA3-256 digest  */
+			SHA3_384 = 6,       /**< SHA3-384 digest  */
+			SHA3_512 = 7,       /**< SHA3-512 digest  */
+			SHAKE_128 = 8,		/**< SHAKE_128 digest  */
+			SHAKE_256 = 9,		/**< SHAKE_256 digest  */
+			ALGORITHM_MAX = 10   /**< Updated value required by SEfile */
+		 };
 	};
 }
 

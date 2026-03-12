@@ -119,7 +119,15 @@ se3_algo_descriptor algo_table[SE3_ALGO_MAX] = {
     "SHAKE256",
     SE3_CRYPTO_TYPE_DIGEST,
     0,                         // XOF mode
-    {0, 0, 0, 0, 0, 0, 0, 0, 0, 0}}
+    {0, 0, 0, 0, 0, 0, 0, 0, 0, 0}},
+{ // ID 10: NTT_BENCHMARK
+    se3_algo_ntt_bench_init, se3_algo_ntt_bench_update,
+    0, "NTT_BENCH", SE3_TYPE_ARITHMETIC
+},
+{ // ID 11: INV_NTT_BENCHMARK
+    se3_algo_invntt_bench_init, se3_algo_invntt_bench_update,
+    0, "INVNTT_BENCH", SE3_TYPE_ARITHMETIC
+}
 };
 
 union {

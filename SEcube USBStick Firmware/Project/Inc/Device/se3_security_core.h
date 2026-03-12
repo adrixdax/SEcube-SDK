@@ -36,6 +36,7 @@
 #include "sha256.h"
 #include "pbkdf2.h"
 #include "sha3.h"
+#include "se3_algo_ntt_bench.h"
 
 enum {
 	SE3_SESSIONS_BUF = (32*1024),  ///< session buffer size
@@ -54,7 +55,8 @@ extern enum {
 	SE3_SHA3_512,
 	/* SHAKE Family Extension */
 	SE3_SHAKE_128,
-	SE3_SHAKE_256
+	SE3_SHAKE_256,
+
 } se3_crypto_algorithm;
 
 // ---- records ----

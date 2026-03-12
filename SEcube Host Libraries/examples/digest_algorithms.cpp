@@ -12,7 +12,7 @@
 
 using namespace std;
 
-int main() {
+int digest_example() {
     char digest_input[] = "Hello World!";
     int testsize = strlen(digest_input);
 

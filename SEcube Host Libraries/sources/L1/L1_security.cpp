@@ -457,7 +457,7 @@ void L1::L1Digest(size_t input_size, std::shared_ptr<uint8_t[]> input_data, SEcu
 	}
 	uint32_t encSessId = 0;
 	size_t expected_len = digest.get_digest_len();
-	if (expected_len > 4096) {
+	if (expected_len > 8192) {
 		throw std::invalid_argument("Lunghezza eccessiva (> 4096 byte).");
 	}
 	std::unique_ptr<uint8_t[]> output_data = make_unique<uint8_t[]>(expected_len);
@@ -519,7 +519,6 @@ void L1::L1Digest(size_t input_size, std::shared_ptr<uint8_t[]> input_data, SEcu
 		} while(input_size > 0);
 
 		size_t digest_size = digest.get_digest_len();
-		cout << "Size: " << digest_size << endl;
 		for(size_t i = 0; i < digest_size; i++) {
 			digest.digest[i] = output_data[i];
 		}

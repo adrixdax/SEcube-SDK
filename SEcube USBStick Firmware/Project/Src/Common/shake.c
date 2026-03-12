@@ -34,6 +34,11 @@ int32_t shake128_squeeze(uint8_t *out, size_t outlen, keccak_state *state) {
     return SHAKE_RES_OK;
 }
 
+int32_t shake128_squeezeblocks(uint8_t *out, size_t nblocks, keccak_state *state) {
+    keccak_squeezeblocks(out, nblocks, state->s, SHAKE128_RATE);
+    return SHAKE_RES_OK;
+}
+
 /* --- SHAKE256 --- */
 int32_t shake256_init(keccak_state *state) {
     if(state == NULL) return SHAKE_RES_ERR;
@@ -57,5 +62,10 @@ int32_t shake256_finalize(keccak_state *state) {
 int32_t shake256_squeeze(uint8_t *out, size_t outlen, keccak_state *state) {
     if(state == NULL || out == NULL) return SHAKE_RES_ERR;
     state->pos = keccak_squeeze(out, outlen, state->s, state->pos, SHAKE256_RATE);
+    return SHAKE_RES_OK;
+}
+
+int32_t shake256_squeezeblocks(uint8_t *out, size_t nblocks, keccak_state *state) {
+    keccak_squeezeblocks(out, nblocks, state->s, SHAKE256_RATE);
     return SHAKE_RES_OK;
 }

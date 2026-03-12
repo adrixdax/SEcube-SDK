@@ -5,12 +5,12 @@
   ******************************************************************************
   */
 
+#include "se3_algo_dilithium_params.h"
 #include "se3_arith_ntt.h"
+#include "se3_arith_reduce.h"
 #include <stdint.h>
 
 /* Parametri Dilithium definiti nel testbench Host */
-#define Q    8380417
-#define QINV 58728449
 
 /* Tabella completa delle 256 radici dell'unità (ZETAS) */
 __attribute__((aligned(8))) const int32_t zetas[256] = {
@@ -48,31 +48,21 @@ __attribute__((aligned(8))) const int32_t zetas[256] = {
     -554416, 3919660, -48306, -1362209, 3937738, 1400424, -846154, 1976782
 };
 
-/**
- * @brief Riduzione di Montgomery speculare alla versione Host.
- */
-__attribute__((always_inline)) static inline int32_t montgomery_reduce(int64_t a) {
-    int32_t t = (int32_t)a * QINV;
-    return (int32_t)((a - (int64_t)t * Q) >> 32);
-}
-
+__attribute__((optimize("O3")))
 void ntt(int32_t *__restrict p) {
     unsigned int len, start, j, k = 0;
-    int32_t zeta, t0, t1;
+    int32_t zeta, t0, t1, v_top0, v_top1, v_bot0, v_bot1;
 
-    // Stadi 1-7: len da 128 a 2
     for (len = 128; len > 1; len >>= 1) {
         for (start = 0; start < 256; start += (len << 1)) {
             zeta = zetas[++k];
             int32_t *p_top = p + start;
             int32_t *p_bot = p + start + len;
 
-            // Unrolling a 2 per saturare la pipeline DSP
             for (j = 0; j < len; j += 2) {
-                int32_t v_top0 = p_top[0];
-                int32_t v_top1 = p_top[1];
-                int32_t v_bot0 = p_bot[0];
-                int32_t v_bot1 = p_bot[1];
+                // Caricamento vettoriale (LDRD se possibile)
+                v_top0 = p_top[0]; v_top1 = p_top[1];
+                v_bot0 = p_bot[0]; v_bot1 = p_bot[1];
 
                 t0 = montgomery_reduce((int64_t)zeta * v_bot0);
                 t1 = montgomery_reduce((int64_t)zeta * v_bot1);
@@ -82,11 +72,11 @@ void ntt(int32_t *__restrict p) {
                 p_bot[1] = v_top1 - t1;
                 p_top[1] = v_top1 + t1;
 
-                p_top += 2;
-                p_bot += 2;
+                p_top += 2; p_bot += 2;
             }
         }
     }
+    // Ultimo stadio fuso per evitare l'overhead dei puntatori
     for (start = 0; start < 256; start += 2) {
         zeta = zetas[++k];
         t0 = montgomery_reduce((int64_t)zeta * p[start + 1]);
@@ -99,10 +89,12 @@ void ntt(int32_t *__restrict p) {
  * @brief Inverse NTT ottimizzata.
  * Sincronizzata con HostArith::INV_N_MONT = 4193792 [cite: 2026-03-11]
  */
+__attribute__((optimize("O3")))
 void invntt_tomont(int32_t *__restrict p) {
     unsigned int len, start, j, k = 256;
-    int32_t zeta;
+    int32_t zeta, f = 41978; // Fattore di scaling finale
 
+    // --- STADIO 1 ---
     for (start = 0; start < 256; start += 2) {
         zeta = -zetas[--k];
         int32_t a = p[start];
@@ -111,33 +103,40 @@ void invntt_tomont(int32_t *__restrict p) {
         p[start + 1] = montgomery_reduce((int64_t)zeta * (a - b));
     }
 
-    // Stadi 2-8: len da 2 a 128
-    for (len = 2; len < 256; len <<= 1) {
+    // --- STADI 2-7 (len da 2 a 64) ---
+    for (len = 2; len < 128; len <<= 1) {
         for (start = 0; start < 256; start += (len << 1)) {
             zeta = -zetas[--k];
             int32_t *p_top = p + start;
             int32_t *p_bot = p + start + len;
 
             for (j = 0; j < len; j += 2) {
-                int32_t a0 = p_top[0];
-                int32_t b0 = p_bot[0];
-                int32_t a1 = p_top[1];
-                int32_t b1 = p_bot[1];
+                int32_t a0 = p_top[0]; int32_t b0 = p_bot[0];
+                int32_t a1 = p_top[1]; int32_t b1 = p_bot[1];
 
                 p_top[0] = a0 + b0;
                 p_bot[0] = montgomery_reduce((int64_t)zeta * (a0 - b0));
                 p_top[1] = a1 + b1;
                 p_bot[1] = montgomery_reduce((int64_t)zeta * (a1 - b1));
 
-                p_top += 2;
-                p_bot += 2;
+                p_top += 2; p_bot += 2;
             }
         }
     }
-    /* Scaling finale per uscire dal dominio di Montgomery e normalizzare [cite: 2026-03-11] */
-    for (j = 0; j < 256; ++j) {
-        const int32_t f = 41978;
-        int64_t prod = (int64_t)p[j] * f;
-        p[j] = montgomery_reduce(prod);
+
+    // --- STADIO 8 (FUSO CON SCALING FINALE) ---
+    // Invece di fare un altro ciclo dopo, scaliamo qui i risultati
+    zeta = -zetas[--k];
+    for (j = 0; j < 128; ++j) {
+        int32_t a = p[j];
+        int32_t b = p[j + 128];
+
+        // Calcolo butterfly standard
+        int32_t res_top = a + b;
+        int32_t res_bot = montgomery_reduce((int64_t)zeta * (a - b));
+
+        // Applichiamo lo scaling f immediatamente prima di scrivere in RAM
+        p[j]       = montgomery_reduce((int64_t)res_top * f);
+        p[j + 128] = montgomery_reduce((int64_t)res_bot * f);
     }
 }

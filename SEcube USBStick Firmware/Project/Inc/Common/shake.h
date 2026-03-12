@@ -22,10 +22,12 @@ int32_t shake128_init(keccak_state *state);
 int32_t shake128_absorb(keccak_state *state, const uint8_t *in, size_t inlen);
 int32_t shake128_finalize(keccak_state *state);
 int32_t shake128_squeeze(uint8_t *out, size_t outlen, keccak_state *state);
+int32_t shake128_squeezeblocks(uint8_t *out, size_t nblocks, keccak_state *state);
 
 /* --- SHAKE256 --- */
 int32_t shake256_init(keccak_state *state);
 int32_t shake256_absorb(keccak_state *state, const uint8_t *in, size_t inlen);
 int32_t shake256_finalize(keccak_state *state);
 int32_t shake256_squeeze(uint8_t *out, size_t outlen, keccak_state *state);
+int32_t shake256_squeezeblocks(uint8_t *out, size_t nblocks, keccak_state *state);
 

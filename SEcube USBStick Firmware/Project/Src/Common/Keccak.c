@@ -28,6 +28,7 @@ static const uint8_t keccak_pi_lane[24] = {
     15, 23, 19, 13, 12, 2,  20, 14, 22, 9,  6,  1
 };
 
+__attribute__((optimize("O3")))
 void KeccakF1600_StatePermute(uint64_t state[25])
 {
     int round, j;

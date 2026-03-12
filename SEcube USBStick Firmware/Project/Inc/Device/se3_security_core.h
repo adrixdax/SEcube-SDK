@@ -36,7 +36,6 @@
 #include "sha256.h"
 #include "pbkdf2.h"
 #include "sha3.h"
-#include "se3_algo_ntt_bench.h"
 
 enum {
 	SE3_SESSIONS_BUF = (32*1024),  ///< session buffer size

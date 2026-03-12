@@ -31,6 +31,7 @@
 #include "se3_algo_sha3.h"
 #include "se3_algo_shake.h"
 #include "se3_common.h"
+#include "se3_arith_polyvec.h"
 
 SE3_SECURITY_INFO se3_security_info;
 
@@ -120,14 +121,6 @@ se3_algo_descriptor algo_table[SE3_ALGO_MAX] = {
     SE3_CRYPTO_TYPE_DIGEST,
     0,                         // XOF mode
     {0, 0, 0, 0, 0, 0, 0, 0, 0, 0}},
-{ // ID 10: NTT_BENCHMARK
-    se3_algo_ntt_bench_init, se3_algo_ntt_bench_update,
-    0, "NTT_BENCH", SE3_TYPE_ARITHMETIC
-},
-{ // ID 11: INV_NTT_BENCHMARK
-    se3_algo_invntt_bench_init, se3_algo_invntt_bench_update,
-    0, "INVNTT_BENCH", SE3_TYPE_ARITHMETIC
-}
 };
 
 union {

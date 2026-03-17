@@ -35,21 +35,20 @@ void poly_pointwise_montgomery(poly * __restrict__ c, const poly * __restrict__ 
  * Funzioni di Hashing, Arrotondamento e Hint
  * ========================================================================= */
 void poly_power2round(poly *a1, poly *a0, const poly *a);
-void poly_decompose(poly *a1, poly *a0, const poly *a);
-unsigned int poly_make_hint(poly * __restrict__ h, const poly * __restrict__ a0, const poly * __restrict__ a1);
-void poly_use_hint(poly *b, const poly *a, const poly *h);
-
+void poly_decompose(poly *a1, poly *a0, const poly *a, const dilithium_conf_t *conf);
+unsigned int poly_make_hint(poly * __restrict__ h, const poly * __restrict__ a0, const poly * __restrict__ a1, const dilithium_conf_t *conf);
+void poly_use_hint(poly *b, const poly *a, const poly *h, const dilithium_conf_t *conf);
 /* ========================================================================= *
  * Funzioni di Campionamento e Controllo (Rejection Sampling)
  * ========================================================================= */
 int poly_chknorm(const poly *a, int32_t B);
-void poly_challenge(poly *c, const uint8_t seed[CTILDEBYTES]);
+void poly_challenge(poly *c, const uint8_t *seed, const dilithium_conf_t *conf);
 
 void poly_uniform(poly *a, const uint8_t seed[DIL_SEEDBYTES], uint16_t nonce);
-void poly_uniform_eta(poly *a, const uint8_t seed[DIL_CRHBYTES], uint16_t nonce);
-void poly_uniform_gamma1(poly *a, const uint8_t seed[DIL_CRHBYTES], uint16_t nonce);
+void poly_uniform_eta(poly *a, const uint8_t seed[DIL_CRHBYTES], uint16_t nonce, const dilithium_conf_t *conf);
+void poly_uniform_gamma1(poly *a, const uint8_t seed[DIL_CRHBYTES], uint16_t nonce, const dilithium_conf_t *conf);
 
-unsigned int rej_eta(int32_t *a, unsigned int len, const uint8_t *buf, unsigned int buflen);
+unsigned int rej_eta(int32_t *a, unsigned int len, const uint8_t *buf, unsigned int buflen, const dilithium_conf_t *conf);
 unsigned int rej_uniform(int32_t *a, unsigned int len, const uint8_t *buf, unsigned int buflen);
 
 /* ========================================================================= *
@@ -61,10 +60,10 @@ void polyt1_unpack(poly *a, const uint8_t *r);
 void polyt0_pack(uint8_t *r, const poly *a);
 void polyt0_unpack(poly *a, const uint8_t *r);
 
-void polyeta_pack(uint8_t *r, const poly *a);
-void polyeta_unpack(poly *a, const uint8_t *r);
+void polyeta_pack(uint8_t *r, const poly *a, const dilithium_conf_t *conf);
+void polyeta_unpack(poly *a, const uint8_t *r, const dilithium_conf_t *conf);
 
-void polyz_pack(uint8_t *r, const poly *a);
-void polyz_unpack(poly *a, const uint8_t *r);
+void polyz_pack(uint8_t *r, const poly *a, const dilithium_conf_t *conf);
+void polyz_unpack(poly *a, const uint8_t *r, const dilithium_conf_t *conf);
 
-void polyw1_pack(uint8_t * __restrict__ r, const poly * __restrict__ a);
+void polyw1_pack(uint8_t * __restrict__ r, const poly * __restrict__ a, const dilithium_conf_t *conf);

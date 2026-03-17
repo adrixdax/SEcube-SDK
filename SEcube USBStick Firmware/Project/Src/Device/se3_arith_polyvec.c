@@ -1,31 +1,33 @@
 /**
   ******************************************************************************
   * File Name          : se3_arith_polyvec.c
-  * Description        : Implementazione vettoriale. Eredita le performance
-  * dal livello base se3_arith_poly.
+  * Description        : Implementazione vettoriale dinamica.
+  * I cicli sono pilotati dalla struttura dilithium_conf_t passata a runtime.
   ******************************************************************************
   */
 
 #include <stdint.h>
+#include <string.h>
 #include "se3_arith_polyvec.h"
+#include "se3_core.h"
 
 /* ========================================================================== */
 /* Operazioni sulle Matrici (ExpandA)                                         */
 /* ========================================================================== */
 
-void polyvec_matrix_expand(polyvecl mat[DIL_K], const uint8_t rho[DIL_SEEDBYTES]) {
+void polyvec_matrix_expand(polyvecl mat[DIL_K_MAX], const uint8_t rho[DIL_SEEDBYTES], const dilithium_conf_t *conf) {
   unsigned int i, j;
-  for(i = 0; i < DIL_K; ++i) {
-    for(j = 0; j < DIL_L; ++j) {
-      poly_uniform(&mat[i].vec[j], rho, (i << 8) + j);
+  for(i = 0; i < conf->k; ++i) {
+    for(j = 0; j < conf->l; ++j) {
+      poly_uniform(&mat[i].vec[j], rho, (i << 8) + j); // poly_uniform non dipende dal livello
     }
   }
 }
 
-void polyvec_matrix_pointwise_montgomery(polyveck *t, const polyvecl mat[DIL_K], const polyvecl *v) {
+void polyvec_matrix_pointwise_montgomery(polyveck *t, const polyvecl mat[DIL_K_MAX], const polyvecl *v, const dilithium_conf_t *conf) {
   unsigned int i;
-  for(i = 0; i < DIL_K; ++i) {
-    polyvecl_pointwise_acc_montgomery(&t->vec[i], &mat[i], v);
+  for(i = 0; i < conf->k; ++i) {
+    polyvecl_pointwise_acc_montgomery(&t->vec[i], &mat[i], v, conf);
   }
 }
 
@@ -33,62 +35,62 @@ void polyvec_matrix_pointwise_montgomery(polyveck *t, const polyvecl mat[DIL_K],
 /* Vettori di Polinomi di lunghezza L                                         */
 /* ========================================================================== */
 
-void polyvecl_uniform_eta(polyvecl *v, const uint8_t seed[DIL_CRHBYTES], uint16_t nonce) {
+void polyvecl_uniform_eta(polyvecl *v, const uint8_t seed[DIL_CRHBYTES], uint16_t nonce, const dilithium_conf_t *conf) {
   unsigned int i;
-  for(i = 0; i < DIL_L; ++i)
-    poly_uniform_eta(&v->vec[i], seed, nonce++);
+  for(i = 0; i < conf->l; ++i)
+    poly_uniform_eta(&v->vec[i], seed, nonce++, conf);
 }
 
-void polyvecl_uniform_gamma1(polyvecl *v, const uint8_t seed[DIL_CRHBYTES], uint16_t nonce) {
+void polyvecl_uniform_gamma1(polyvecl *v, const uint8_t seed[DIL_CRHBYTES], uint16_t nonce, const dilithium_conf_t *conf) {
   unsigned int i;
-  for(i = 0; i < DIL_L; ++i)
-    poly_uniform_gamma1(&v->vec[i], seed, DIL_L * nonce + i);
+  for(i = 0; i < conf->l; ++i)
+    poly_uniform_gamma1(&v->vec[i], seed, conf->l * nonce + i, conf);
 }
 
-void polyvecl_reduce(polyvecl *v) {
+void polyvecl_reduce(polyvecl *v, const dilithium_conf_t *conf) {
   unsigned int i;
-  for(i = 0; i < DIL_L; ++i)
+  for(i = 0; i < conf->l; ++i)
     poly_reduce(&v->vec[i]);
 }
 
-void polyvecl_add(polyvecl *w, const polyvecl *u, const polyvecl *v) {
+void polyvecl_add(polyvecl *w, const polyvecl *u, const polyvecl *v, const dilithium_conf_t *conf) {
   unsigned int i;
-  for(i = 0; i < DIL_L; ++i)
+  for(i = 0; i < conf->l; ++i)
     poly_add(&w->vec[i], &u->vec[i], &v->vec[i]);
 }
 
-void polyvecl_ntt(polyvecl *v) {
+void polyvecl_ntt(polyvecl *v, const dilithium_conf_t *conf) {
   unsigned int i;
-  for(i = 0; i < DIL_L; ++i)
+  for(i = 0; i < conf->l; ++i)
     poly_ntt(&v->vec[i]);
 }
 
-void polyvecl_invntt_tomont(polyvecl *v) {
+void polyvecl_invntt_tomont(polyvecl *v, const dilithium_conf_t *conf) {
   unsigned int i;
-  for(i = 0; i < DIL_L; ++i)
+  for(i = 0; i < conf->l; ++i)
     poly_invntt_tomont(&v->vec[i]);
 }
 
-void polyvecl_pointwise_poly_montgomery(polyvecl *r, const poly *a, const polyvecl *v) {
+void polyvecl_pointwise_poly_montgomery(polyvecl *r, const poly *a, const polyvecl *v, const dilithium_conf_t *conf) {
   unsigned int i;
-  for(i = 0; i < DIL_L; ++i)
+  for(i = 0; i < conf->l; ++i)
     poly_pointwise_montgomery(&r->vec[i], a, &v->vec[i]);
 }
 
-void polyvecl_pointwise_acc_montgomery(poly *w, const polyvecl *u, const polyvecl *v) {
+void polyvecl_pointwise_acc_montgomery(poly *w, const polyvecl *u, const polyvecl *v, const dilithium_conf_t *conf) {
   unsigned int i;
   poly t;
 
   poly_pointwise_montgomery(w, &u->vec[0], &v->vec[0]);
-  for(i = 1; i < DIL_L; ++i) {
+  for(i = 1; i < conf->l; ++i) {
     poly_pointwise_montgomery(&t, &u->vec[i], &v->vec[i]);
     poly_add(w, w, &t);
   }
 }
 
-int polyvecl_chknorm(const polyvecl *v, int32_t bound)  {
+int polyvecl_chknorm(const polyvecl *v, int32_t bound, const dilithium_conf_t *conf)  {
   unsigned int i;
-  for(i = 0; i < DIL_L; ++i)
+  for(i = 0; i < conf->l; ++i)
     if(poly_chknorm(&v->vec[i], bound))
       return 1;
   return 0;
@@ -98,163 +100,96 @@ int polyvecl_chknorm(const polyvecl *v, int32_t bound)  {
 /* Vettori di Polinomi di lunghezza K                                         */
 /* ========================================================================== */
 
-void polyveck_uniform_eta(polyveck *v, const uint8_t seed[DIL_CRHBYTES], uint16_t nonce) {
+void polyveck_uniform_eta(polyveck *v, const uint8_t seed[DIL_CRHBYTES], uint16_t nonce, const dilithium_conf_t *conf) {
   unsigned int i;
-  for(i = 0; i < DIL_K; ++i)
-    poly_uniform_eta(&v->vec[i], seed, nonce++);
+  for(i = 0; i < conf->k; ++i)
+    poly_uniform_eta(&v->vec[i], seed, nonce++, conf);
 }
 
-void polyveck_reduce(polyveck *v) {
+void polyveck_reduce(polyveck *v, const dilithium_conf_t *conf) {
   unsigned int i;
-  for(i = 0; i < DIL_K; ++i)
+  for(i = 0; i < conf->k; ++i)
     poly_reduce(&v->vec[i]);
 }
 
-void polyveck_caddq(polyveck *v) {
+void polyveck_caddq(polyveck *v, const dilithium_conf_t *conf) {
   unsigned int i;
-  for(i = 0; i < DIL_K; ++i)
+  for(i = 0; i < conf->k; ++i)
     poly_caddq(&v->vec[i]);
 }
 
-void polyveck_add(polyveck *w, const polyveck *u, const polyveck *v) {
+void polyveck_add(polyveck *w, const polyveck *u, const polyveck *v, const dilithium_conf_t *conf) {
   unsigned int i;
-  for(i = 0; i < DIL_K; ++i)
+  for(i = 0; i < conf->k; ++i)
     poly_add(&w->vec[i], &u->vec[i], &v->vec[i]);
 }
 
-void polyveck_sub(polyveck *w, const polyveck *u, const polyveck *v) {
+void polyveck_sub(polyveck *w, const polyveck *u, const polyveck *v, const dilithium_conf_t *conf) {
   unsigned int i;
-  for(i = 0; i < DIL_K; ++i)
+  for(i = 0; i < conf->k; ++i)
     poly_sub(&w->vec[i], &u->vec[i], &v->vec[i]);
 }
 
-void polyveck_shiftl(polyveck *v) {
+void polyveck_shiftl(polyveck *v, const dilithium_conf_t *conf) {
   unsigned int i;
-  for(i = 0; i < DIL_K; ++i)
+  for(i = 0; i < conf->k; ++i)
     poly_shiftl(&v->vec[i]);
 }
 
-void polyveck_ntt(polyveck *v) {
+void polyveck_ntt(polyveck *v, const dilithium_conf_t *conf) {
   unsigned int i;
-  for(i = 0; i < DIL_K; ++i)
+  for(i = 0; i < conf->k; ++i)
     poly_ntt(&v->vec[i]);
 }
 
-void polyveck_invntt_tomont(polyveck *v) {
+void polyveck_invntt_tomont(polyveck *v, const dilithium_conf_t *conf) {
   unsigned int i;
-  for(i = 0; i < DIL_K; ++i)
+  for(i = 0; i < conf->k; ++i)
     poly_invntt_tomont(&v->vec[i]);
 }
 
-void polyveck_pointwise_poly_montgomery(polyveck *r, const poly *a, const polyveck *v) {
+void polyveck_pointwise_poly_montgomery(polyveck *r, const poly *a, const polyveck *v, const dilithium_conf_t *conf) {
   unsigned int i;
-  for(i = 0; i < DIL_K; ++i)
+  for(i = 0; i < conf->k; ++i)
     poly_pointwise_montgomery(&r->vec[i], a, &v->vec[i]);
 }
 
-int polyveck_chknorm(const polyveck *v, int32_t bound) {
+int polyveck_chknorm(const polyveck *v, int32_t bound, const dilithium_conf_t *conf) {
   unsigned int i;
-  for(i = 0; i < DIL_K; ++i)
+  for(i = 0; i < conf->k; ++i)
     if(poly_chknorm(&v->vec[i], bound))
       return 1;
   return 0;
 }
 
-void polyveck_power2round(polyveck *v1, polyveck *v0, const polyveck *v) {
+void polyveck_power2round(polyveck *v1, polyveck *v0, const polyveck *v, const dilithium_conf_t *conf) {
   unsigned int i;
-  for(i = 0; i < DIL_K; ++i)
+  for(i = 0; i < conf->k; ++i)
     poly_power2round(&v1->vec[i], &v0->vec[i], &v->vec[i]);
 }
 
-void polyveck_decompose(polyveck *v1, polyveck *v0, const polyveck *v) {
+void polyveck_decompose(polyveck *v1, polyveck *v0, const polyveck *v, const dilithium_conf_t *conf) {
   unsigned int i;
-  for(i = 0; i < DIL_K; ++i)
-    poly_decompose(&v1->vec[i], &v0->vec[i], &v->vec[i]);
+  for(i = 0; i < conf->k; ++i)
+    poly_decompose(&v1->vec[i], &v0->vec[i], &v->vec[i], conf);
 }
 
-unsigned int polyveck_make_hint(polyveck *h, const polyveck *v0, const polyveck *v1) {
+unsigned int polyveck_make_hint(polyveck *h, const polyveck *v0, const polyveck *v1, const dilithium_conf_t *conf) {
   unsigned int i, s = 0;
-  for(i = 0; i < DIL_K; ++i)
-    s += poly_make_hint(&h->vec[i], &v0->vec[i], &v1->vec[i]);
+  for(i = 0; i < conf->k; ++i)
+    s += poly_make_hint(&h->vec[i], &v0->vec[i], &v1->vec[i], conf);
   return s;
 }
 
-void polyveck_use_hint(polyveck *w, const polyveck *u, const polyveck *h) {
+void polyveck_use_hint(polyveck *w, const polyveck *u, const polyveck *h, const dilithium_conf_t *conf) {
   unsigned int i;
-  for(i = 0; i < DIL_K; ++i)
-    poly_use_hint(&w->vec[i], &u->vec[i], &h->vec[i]);
+  for(i = 0; i < conf->k; ++i)
+    poly_use_hint(&w->vec[i], &u->vec[i], &h->vec[i],conf);
 }
 
-void polyveck_pack_w1(uint8_t r[DIL_K * DIL_POLYW1_PACKEDBYTES], const polyveck *w1) {
+void polyveck_pack_w1(uint8_t *r, const polyveck *w1, const dilithium_conf_t *conf) {
   unsigned int i;
-  for(i = 0; i < DIL_K; ++i)
-    polyw1_pack(&r[i * DIL_POLYW1_PACKEDBYTES], &w1->vec[i]);
+  for(i = 0; i < conf->k; ++i)
+    polyw1_pack(&r[i * conf->polyw1_packed], &w1->vec[i], conf);
 }
 
-static uint8_t op_counter = 0; // Persistente tra le chiamate
-static polyveck u_bench, v_bench, w_bench;
-
-uint16_t se3_algo_polyvec_bench_init(se3_flash_key* key, uint16_t mode, uint8_t* ctx) {
-  // Nessun contesto persistente necessario per il benchmark
-  return SE3_OK;
-}
-
-uint16_t se3_algo_polyvec_bench_update(
-    uint8_t* ctx, uint16_t flags,
-    uint16_t datain1_len, const uint8_t* datain1,
-    uint16_t datain2_len, const uint8_t* datain2,
-    uint16_t* dataout_len, uint8_t* dataout)
-{
-  // 1. Validazione parametri e buffer
-  if (datain1_len < (DIL_K * 1024) || dataout == NULL) return SE3_ERR_PARAMS;
-
-  // Caricamento dei dati dal client (Host)
-  memcpy(u_bench.vec, datain1, DIL_K * 1024);
-  memcpy(v_bench.vec, u_bench.vec, DIL_K * 1024);
-
-  uint32_t t_op = 0;
-
-  // 2. Abilitazione sicura del contatore di cicli
-  CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
-  DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
-
-  // 3. Esecuzione dell'operazione basata sul contatore
-  __disable_irq();
-  DWT->CYCCNT = 0; // Azzeramento immediato prima dello switch
-
-  switch(op_counter) {
-    case 0: polyveck_add(&w_bench, &u_bench, &v_bench); break;
-    case 1: polyveck_sub(&w_bench, &u_bench, &v_bench); break;
-    case 2: polyveck_reduce(&u_bench); break;
-    case 3: polyveck_caddq(&u_bench); break;
-    case 4: polyveck_ntt(&u_bench); break;
-    case 5:polyveck_invntt_tomont(&u_bench);break;
-    case 6: polyveck_shiftl(&u_bench); break;
-    default: op_counter = 0; break;
-  }
-
-  t_op = DWT->CYCCNT; // Cattura immediata dopo l'operazione
-  __enable_irq();
-
-  // 4. Copia dei risultati nel buffer di uscita
-  if (op_counter <= 1) {
-    memcpy(dataout, w_bench.vec, DIL_K * 1024);
-  } else {
-    memcpy(dataout, u_bench.vec, DIL_K * 1024);
-  }
-
-  // 5. Gestione dei Tick di performance (sempre a 4124 byte totali)
-  // Scriviamo il tick dell'operazione corrente
-  memcpy(dataout + (DIL_K * 1024), &t_op, 4);
-
-  // Opzionale: azzera i restanti 24 byte dei tick per pulizia
-  memset(dataout + (DIL_K * 1024) + 4, 0, 24);
-
-  // Incremento circolare del contatore
-  op_counter = (op_counter + 1) % 7;
-
-  // Restituiamo 4124 byte (4096 dati + 28 tick) come richiesto dall'Host
-  if (dataout_len) *dataout_len = (DIL_K * 1024) + 28;
-
-  return SE3_OK;
-}

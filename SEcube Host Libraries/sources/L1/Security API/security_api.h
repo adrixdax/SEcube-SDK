@@ -80,6 +80,24 @@ public:
 	void reset(); /**< Reset the content of the L1Ciphertext object. */
 };
 
+class SEcube_signature {
+public:
+	uint32_t key_id;
+	uint16_t algorithm;
+	uint16_t security_level;
+	std::array<uint8_t, 5120> signature_data;
+	size_t signature_len;
+
+	size_t get_expected_sig_len() const {
+		switch (security_level) {
+			case 2: return 2420; // ML-DSA-44
+			case 3: return 3309; // ML-DSA-65
+			case 5: return 4595; // ML-DSA-87
+			default: return 0;
+		}
+	}
+};
+
 class SecurityApi {
 private:
 public:
@@ -93,6 +111,10 @@ public:
 	virtual void L1Decrypt(SEcube_ciphertext& encrypted_data, size_t& plaintext_size, std::shared_ptr<uint8_t[]>& plaintext) = 0;
 	virtual void L1Digest(size_t input_size, std::shared_ptr<uint8_t[]> input_data, SEcube_digest& digest) = 0;
 	virtual void L1GetAlgorithms(std::vector<se3Algo>& algorithmsArray) = 0;
+
+	virtual void L1_ML_DSA_Keygen(uint16_t level, std::vector<uint8_t>& pk, std::vector<uint8_t>& sk) = 0;
+	virtual void L1_ML_DSA_Sign(uint16_t level, const std::vector<uint8_t>& msg, const std::vector<uint8_t>& sk, std::vector<uint8_t>& signature) = 0;
+	virtual bool L1_ML_DSA_Verify(uint16_t level, const std::vector<uint8_t>& msg, const std::vector<uint8_t>& signature, const std::vector<uint8_t>& pk) = 0;
 };
 
 #endif

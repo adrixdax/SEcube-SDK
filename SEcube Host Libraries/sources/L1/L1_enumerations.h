@@ -170,6 +170,7 @@ namespace L1Crypto {
 			SE3_CRYPTO_TYPE_STREAMCIPHER = 1, /**< Stream cipher. */
 			SE3_CRYPTO_TYPE_DIGEST = 2, /**< Digest algorithm (i.e. SHA-256, HMAC-SHA-256). */
 			SE3_CRYPTO_TYPE_BLOCKCIPHER_AUTH = 3, /**< Block cipher algorithm, granting also integrity and authentication (i.e. AES-256-HMAC-SHA-256). */
+			SE3_CRYPTO_TYPE_DSA = 4,
 			SE3_CRYPTO_TYPE_OTHER = 0xFFFF /**< Anything else not listed above. */
 		};
 	};
@@ -494,7 +495,21 @@ namespace L1Algorithms {
 			SHA3_512 = 7,       /**< SHA3-512 digest  */
 			SHAKE_128 = 8,		/**< SHAKE_128 digest  */
 			SHAKE_256 = 9,		/**< SHAKE_256 digest  */
-			ALGORITHM_MAX = 10   /**< Updated value required by SEfile */
+			/* ML-DSA-44 (Livello 2) */
+			ML_DSA_44_KEYGEN = 10,
+			ML_DSA_44_SIGN   = 11,
+			ML_DSA_44_VERIFY = 12,
+
+					  /* ML-DSA-65 (Livello 3) */
+			ML_DSA_65_KEYGEN = 13,
+			ML_DSA_65_SIGN   = 14,
+			ML_DSA_65_VERIFY = 15,
+
+					  /* ML-DSA-87 (Livello 5) */
+			ML_DSA_87_KEYGEN = 16,
+			ML_DSA_87_SIGN   = 17,
+			ML_DSA_87_VERIFY = 18,
+			ALGORITHM_MAX    = 20
 		 };
 	};
 }

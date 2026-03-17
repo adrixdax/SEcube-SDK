@@ -168,14 +168,13 @@ void L1::TXRXData(uint16_t cmd, uint16_t reqLen, uint16_t cmdFlags, uint16_t* re
 	uint16_t respStatus;
 	L1TXRXException commExc;
 	bool dataSent = false;
-
 	while(!dataSent) {
 		try {
 			L0::L0TXRX(L0Commands::Command::L1_CMD0, cmdFlags, req0Len, this->base.GetSessionBuffer(), &respStatus, &resp0Len, this->base.GetSessionBuffer());
 			dataSent = true;
 		}
 		catch(const L0NoDeviceOpenedException& e) {
-//			printf("The device was closed!!!\n");
+			printf("The device was closed!!!\n");
 			L0Open();
 		}
 		catch (const std::exception& e){

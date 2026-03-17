@@ -214,6 +214,12 @@ public:
 	 * @param [in] key_data The value of the key to be written. Can be null if the key must be generated inside the SEcube with the TRNG.
 	 * @return True on success, false otherwise. */
 	bool L1SEkey_InsertKey(uint32_t key_id, uint16_t key_len, uint32_t dec_id, std::shared_ptr<uint8_t[]> key_data);
+
+
+	// --- Implementazione API ML-DSA (Post-Quantum) ---
+	void L1_ML_DSA_Keygen(uint16_t level, std::vector<uint8_t>& pk, std::vector<uint8_t>& sk) override;
+	void L1_ML_DSA_Sign(uint16_t level, const std::vector<uint8_t>& msg, const std::vector<uint8_t>& sk, std::vector<uint8_t>& signature) override;
+	bool L1_ML_DSA_Verify(uint16_t level, const std::vector<uint8_t>& msg, const std::vector<uint8_t>& signature, const std::vector<uint8_t>& pk) override;
 };
 
 #endif

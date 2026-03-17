@@ -55,7 +55,10 @@ extern enum {
 	/* SHAKE Family Extension */
 	SE3_SHAKE_128,
 	SE3_SHAKE_256,
-
+	/* ML-DSA (Dilithium) Post-Quantum Signatures */
+	SE3_MLDSA_44,  // Livello 2 (AES-128 equivalent)
+	SE3_MLDSA_65,  // Livello 3 (AES-192 equivalent)
+	SE3_MLDSA_87,  // Livello 5 (AES-256 equivalent)
 } se3_crypto_algorithm;
 
 // ---- records ----

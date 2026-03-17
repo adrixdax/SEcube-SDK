@@ -24,7 +24,6 @@
 
 #ifndef SE3_DISPATCHER_CORE_H
 #define SE3_DISPATCHER_CORE_H
-#pragma anon_unions
 
 #include "se3_security_core.h"
 #include "se3_keys.h"

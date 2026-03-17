@@ -59,7 +59,7 @@ void L1::L1CryptoInit(uint16_t algorithm, uint16_t mode, uint32_t keyId, uint32_
 }
 
 void L1::L1CryptoUpdate(uint32_t sessId, uint16_t flags, uint16_t data1Len, uint8_t* data1, uint16_t data2Len, uint8_t* data2, uint16_t* dataOutLen, uint8_t* dataOut) {
-	if(data1Len == 0 && data2Len == 0){
+	if(data1Len == 0 && data2Len == 0 && flags == 0){
 		throw std::invalid_argument("Cannot pass empty input buffers!");
 	}
 
@@ -677,4 +677,71 @@ void L1::L1FindKey(uint32_t keyId, bool& found) {
 			found = false;
 		}
 	}
+}
+
+void L1::L1_ML_DSA_Keygen(uint16_t level, std::vector<uint8_t>& pk, std::vector<uint8_t>& sk) {
+    uint32_t sessId = 0;
+    uint16_t algo_id, pk_size, sk_size;
+
+    if (level == 2)      { algo_id = L1Algorithms::Algorithms::ML_DSA_44_KEYGEN; pk_size = 1312; sk_size = 2528; }
+    else if (level == 3) { algo_id = L1Algorithms::Algorithms::ML_DSA_65_KEYGEN; pk_size = 1952; sk_size = 4000; }
+    else if (level == 5) { algo_id = L1Algorithms::Algorithms::ML_DSA_87_KEYGEN; pk_size = 2592; sk_size = 4864; }
+    else throw std::invalid_argument("Livello ML-DSA non supportato.");
+
+    L1CryptoInit(algo_id, 0, L1Key::Id::NULL_ID, sessId);
+    std::vector<uint8_t> dataOut(pk_size + sk_size);
+    uint16_t dataOutLen = 0;
+
+    L1CryptoUpdate(sessId, L1Crypto::UpdateFlags::FINIT, 0, nullptr, 0, nullptr, &dataOutLen, dataOut.data());
+    pk.assign(dataOut.begin(), dataOut.begin() + pk_size);
+    sk.assign(dataOut.begin() + pk_size, dataOut.end());
+}
+
+void L1::L1_ML_DSA_Sign(uint16_t level, const std::vector<uint8_t>& msg, const std::vector<uint8_t>& sk, std::vector<uint8_t>& signature) {
+    uint32_t sessId = 0;
+    uint16_t algo_id, sig_size;
+
+    if (level == 2)      { algo_id = L1Algorithms::Algorithms::ML_DSA_44_SIGN; sig_size = 2420; }
+    else if (level == 3) { algo_id = L1Algorithms::Algorithms::ML_DSA_65_SIGN; sig_size = 3309; }
+    else if (level == 5) { algo_id = L1Algorithms::Algorithms::ML_DSA_87_SIGN; sig_size = 4595; }
+    else throw std::invalid_argument("Livello ML-DSA non supportato.");
+
+    L1CryptoInit(algo_id, 0, L1Key::Id::NULL_ID, sessId);
+    signature.resize(sig_size);
+    uint16_t dataOutLen = 0;
+
+    // Invio MSG e SK. Il firmware userà FINIT per triggerare la firma matematica.
+    L1CryptoUpdate(sessId, L1Crypto::UpdateFlags::FINIT,
+                   (uint16_t)msg.size(), const_cast<uint8_t*>(msg.data()),
+                   (uint16_t)sk.size(), const_cast<uint8_t*>(sk.data()),
+                   &dataOutLen, signature.data());
+}
+
+bool L1::L1_ML_DSA_Verify(uint16_t level, const std::vector<uint8_t>& msg, const std::vector<uint8_t>& signature, const std::vector<uint8_t>& pk) {
+    uint32_t sessId = 0;
+    uint16_t algo_id;
+
+    if (level == 2)      { algo_id = L1Algorithms::Algorithms::ML_DSA_44_VERIFY; }
+    else if (level == 3) { algo_id = L1Algorithms::Algorithms::ML_DSA_65_VERIFY; }
+    else if (level == 5) { algo_id = L1Algorithms::Algorithms::ML_DSA_87_VERIFY; }
+    else throw std::invalid_argument("Livello ML-DSA non supportato.");
+
+    L1CryptoInit(algo_id, 0, L1Key::Id::NULL_ID, sessId);
+
+    // Prepariamo datain1 (Firma + Messaggio) come richiesto dalla core_update del firmware
+    std::vector<uint8_t> datain1;
+    datain1.reserve(signature.size() + msg.size());
+    datain1.insert(datain1.end(), signature.begin(), signature.end());
+    datain1.insert(datain1.end(), msg.begin(), msg.end());
+
+    uint16_t dataOutLen = 0;
+    try {
+        L1CryptoUpdate(sessId, L1Crypto::UpdateFlags::FINIT,
+                       (uint16_t)datain1.size(), datain1.data(),
+                       (uint16_t)pk.size(), const_cast<uint8_t*>(pk.data()),
+                       &dataOutLen, nullptr);
+        return true;
+    } catch (...) {
+        return false;
+    }
 }

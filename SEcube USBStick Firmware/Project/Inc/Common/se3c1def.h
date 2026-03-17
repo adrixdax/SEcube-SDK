@@ -218,8 +218,23 @@ enum {
 	/* SHAKE Family */
 	SE3_ALGO_SHAKE_128 = 8,
 	SE3_ALGO_SHAKE_256 = 9,
-	SE3_ALGO_MAX = 10                /**< Updated Value for SEfile compatibility */
-};
+	/* ML-DSA-44 (Livello 2 - Equivalente AES-128) */
+		SE3_ALGO_ML_DSA_44_KEYGEN = 10, /**< ML-DSA-44 Key Generation */
+		SE3_ALGO_ML_DSA_44_SIGN = 11,   /**< ML-DSA-44 Signature Generation */
+		SE3_ALGO_ML_DSA_44_VERIFY = 12, /**< ML-DSA-44 Signature Verification */
+
+		/* ML-DSA-65 (Livello 3 - Equivalente AES-192) */
+		SE3_ALGO_ML_DSA_65_KEYGEN = 13, /**< ML-DSA-65 Key Generation */
+		SE3_ALGO_ML_DSA_65_SIGN = 14,   /**< ML-DSA-65 Signature Generation */
+		SE3_ALGO_ML_DSA_65_VERIFY = 15, /**< ML-DSA-65 Signature Verification */
+
+		/* ML-DSA-87 (Livello 5 - Equivalente AES-256) */
+		SE3_ALGO_ML_DSA_87_KEYGEN = 16, /**< ML-DSA-87 Key Generation */
+		SE3_ALGO_ML_DSA_87_SIGN = 17,   /**< ML-DSA-87 Signature Generation */
+		SE3_ALGO_ML_DSA_87_VERIFY = 18, /**< ML-DSA-87 Signature Verification */
+
+		SE3_ALGO_MAX = 19
+	};
 /**
  *  @}
  */
@@ -289,6 +304,7 @@ enum {
 	SE3_CRYPTO_TYPE_DIGEST = 2,
 	SE3_CRYPTO_TYPE_BLOCKCIPHER_AUTH = 3,
 	SE3_TYPE_ARITHMETIC = 4,
+	SE3_CRYPTO_TYPE_DSA = 5,
 	SE3_CRYPTO_TYPE_OTHER = 0xFFFF
 };
 

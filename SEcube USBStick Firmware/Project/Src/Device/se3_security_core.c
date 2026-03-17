@@ -30,6 +30,7 @@
 #include "se3_algo_AesHmacSha256s.h"
 #include "se3_algo_sha3.h"
 #include "se3_algo_shake.h"
+#include "se3_algo_dilithium.h"
 #include "se3_common.h"
 #include "se3_arith_polyvec.h"
 
@@ -121,6 +122,95 @@ se3_algo_descriptor algo_table[SE3_ALGO_MAX] = {
     SE3_CRYPTO_TYPE_DIGEST,
     0,                         // XOF mode
     {0, 0, 0, 0, 0, 0, 0, 0, 0, 0}},
+	/* ========================================================================== *
+	 * ML-DSA-44 (Livello 2 - Equivalente AES-128)
+	 * ========================================================================== */
+	{ // ID 11: ML-DSA-44 Key Generation
+	    se3_algo_Mldsa44_Keygen_init,
+	    se3_algo_Mldsa44_Keygen_update,
+	    (sizeof(se3_dilithium_ctx) + 3) / 4, // Dimensione in word (32-bit)
+	    "ML-DSA-44_KEYGEN",
+	    SE3_CRYPTO_TYPE_DSA,
+	    1,
+	    {0, 0, 0, 0, 0, 0, 0, 0, 0, 0}},
+
+	{ // ID 12: ML-DSA-44 Signature
+	    se3_algo_Mldsa44_Sign_init,
+	    se3_algo_Mldsa44_Sign_update,
+	    (sizeof(se3_dilithium_ctx) + 3) / 4,
+	    "ML-DSA-44_SIGN",
+	    SE3_CRYPTO_TYPE_DSA,
+	    1,
+	    {0, 0, 0, 0, 0, 0, 0, 0, 0, 0}},
+
+	{ // ID 13: ML-DSA-44 Verification
+	    se3_algo_Mldsa44_Verify_init,
+	    se3_algo_Mldsa44_Verify_update,
+	    (sizeof(se3_dilithium_ctx) + 3) / 4,
+	    "ML-DSA-44_VERIFY",
+	    SE3_CRYPTO_TYPE_DSA,
+	    1,
+	    {0, 0, 0, 0, 0, 0, 0, 0, 0, 0}},
+
+	/* ========================================================================== *
+	 * ML-DSA-65 (Livello 3 - Equivalente AES-192)
+	 * ========================================================================== */
+	{ // ID 14: ML-DSA-65 Key Generation
+	    se3_algo_Mldsa65_Keygen_init,
+	    se3_algo_Mldsa65_Keygen_update,
+	    (sizeof(se3_dilithium_ctx) + 3) / 4,
+	    "ML-DSA-65_KEYGEN",
+	    SE3_CRYPTO_TYPE_DSA,
+	    1,
+	    {0, 0, 0, 0, 0, 0, 0, 0, 0, 0}},
+
+	{ // ID 15: ML-DSA-65 Signature
+	    se3_algo_Mldsa65_Sign_init,
+	    se3_algo_Mldsa65_Sign_update,
+	    (sizeof(se3_dilithium_ctx) + 3) / 4,
+	    "ML-DSA-65_SIGN",
+	    SE3_CRYPTO_TYPE_DSA,
+	    1,
+	    {0, 0, 0, 0, 0, 0, 0, 0, 0, 0}},
+
+	{ // ID 16: ML-DSA-65 Verification
+	    se3_algo_Mldsa65_Verify_init,
+	    se3_algo_Mldsa65_Verify_update,
+	    (sizeof(se3_dilithium_ctx) + 3) / 4,
+	    "ML-DSA-65_VERIFY",
+	    SE3_CRYPTO_TYPE_DSA,
+	    1,
+	    {0, 0, 0, 0, 0, 0, 0, 0, 0, 0}},
+
+	/* ========================================================================== *
+	 * ML-DSA-87 (Livello 5 - Equivalente AES-256)
+	 * ========================================================================== */
+	{ // ID 17: ML-DSA-87 Key Generation
+	    se3_algo_Mldsa87_Keygen_init,
+	    se3_algo_Mldsa87_Keygen_update,
+	    (sizeof(se3_dilithium_ctx) + 3) / 4,
+	    "ML-DSA-87_KEYGEN",
+	    SE3_CRYPTO_TYPE_DSA,
+	    1,
+	    {0, 0, 0, 0, 0, 0, 0, 0, 0, 0}},
+
+	{ // ID 18: ML-DSA-87 Signature
+	    se3_algo_Mldsa87_Sign_init,
+	    se3_algo_Mldsa87_Sign_update,
+	    (sizeof(se3_dilithium_ctx) + 3) / 4,
+	    "ML-DSA-87_SIGN",
+	    SE3_CRYPTO_TYPE_DSA,
+	    1,
+	    {0, 0, 0, 0, 0, 0, 0, 0, 0, 0}},
+
+	{ // ID 19: ML-DSA-87 Verification
+	    se3_algo_Mldsa87_Verify_init,
+	    se3_algo_Mldsa87_Verify_update,
+	    (sizeof(se3_dilithium_ctx) + 3) / 4,
+	    "ML-DSA-87_VERIFY",
+	    SE3_CRYPTO_TYPE_DSA,
+	    1,
+	    {0, 0, 0, 0, 0, 0, 0, 0, 0, 0}},
 };
 
 union {

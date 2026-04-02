@@ -12,13 +12,10 @@
 
 #include <stddef.h>
 #include <stdint.h>
-#include "Keccak.h" // Include il motore 64-bit dell'Host
 
 #define SHAKE128_RATE 168
 #define SHAKE256_RATE 136
 
-/* Struttura di contesto per l'Host:
- * Comoda da istanziare nel C++ senza preoccuparsi dei limiti di RAM */
 typedef struct {
     uint64_t s[25];
     unsigned int pos;

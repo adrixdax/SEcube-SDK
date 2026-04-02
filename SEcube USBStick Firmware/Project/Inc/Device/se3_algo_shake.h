@@ -1,9 +1,5 @@
 #include "shake.h" 
 
-typedef struct {
-    keccak_state keccak;
-    uint16_t output_len;
-} se3_shake_ctx;
 
 /* =========================================================
  * Prototipi per SHAKE128 e SHAKE256

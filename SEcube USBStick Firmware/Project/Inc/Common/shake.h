@@ -17,6 +17,14 @@
 #define SHAKE128_RATE 168
 #define SHAKE256_RATE 136
 
+#ifndef SE3_SHAKE_CTX
+#define SE3_SHAKE_CTX
+typedef struct se3_shake_ctx_t {
+    keccak_state keccak;
+    uint16_t output_len;
+} se3_shake_ctx;
+#endif
+
 /* --- SHAKE128 --- */
 int32_t shake128_init(keccak_state *state);
 int32_t shake128_absorb(keccak_state *state, const uint8_t *in, size_t inlen);

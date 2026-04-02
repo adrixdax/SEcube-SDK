@@ -23,6 +23,8 @@ static const uint8_t keccak_rho_offsets[24] = {
     1,  3,  6,  10, 15, 21, 28, 36, 45, 55, 2,  14,
     27, 41, 56, 8,  25, 43, 62, 18, 39, 61, 20, 44
 };
+
+
 static const uint8_t keccak_pi_lane[24] = {
     10, 7,  11, 17, 18, 3,  5,  16, 8,  21, 24, 4,
     15, 23, 19, 13, 12, 2,  20, 14, 22, 9,  6,  1
@@ -143,7 +145,7 @@ unsigned int keccak_squeeze(uint8_t *out, size_t outlen, uint64_t s[25], unsigne
 
 void keccak_squeezeblocks(uint8_t *out, size_t nblocks, uint64_t s[25], unsigned int r) {
     while (nblocks > 0) {
-        KeccakF1600_StatePermute(s);
+        //KeccakF1600_StatePermute(s);
         for (size_t j = 0; j < r; ++j) {
             out[j] = ((uint8_t*)s)[j];
         }

@@ -10,7 +10,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
-#include "se3_algo_dilithium_params.h"
+#include "se3_algo_mldsa_params.h"
 #include "se3_arith_polyvec.h"
 
 /* ========================================================================== *

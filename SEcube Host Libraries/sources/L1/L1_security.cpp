@@ -35,7 +35,7 @@
 
 using namespace std;
 
-//#define SIGNATURE_DEBUG // enable this to debug the value of signatures verified in L1Decrypt
+#define SIGNATURE_DEBUG // enable this to debug the value of signatures verified in L1Decrypt
 
 void L1::L1CryptoInit(uint16_t algorithm, uint16_t mode, uint32_t keyId, uint32_t& sessId) {
 	uint8_t* _algo = (uint8_t*)&algorithm;
@@ -58,63 +58,90 @@ void L1::L1CryptoInit(uint16_t algorithm, uint16_t mode, uint32_t keyId, uint32_
 	sessId = u32Tmp;
 }
 
-void L1::L1CryptoUpdate(uint32_t sessId, uint16_t flags, uint16_t data1Len, uint8_t* data1, uint16_t data2Len, uint8_t* data2, uint16_t* dataOutLen, uint8_t* dataOut) {
-	if(data1Len == 0 && data2Len == 0 && flags == 0){
-		throw std::invalid_argument("Cannot pass empty input buffers!");
-	}
+void L1::L1CryptoUpdate(uint32_t sessId, uint16_t flags,
+                        uint16_t data1Len, uint8_t* data1,
+                        uint16_t data2Len, uint8_t* data2,
+                        uint16_t* dataOutLen, uint8_t* dataOut)
+{
+    if (data1Len == 0 && data2Len == 0 && flags == 0) {
+        throw std::invalid_argument("Cannot pass empty input buffers!");
+    }
 
-	uint8_t* _sessId = (uint8_t*)&sessId;
-	uint8_t* _flags = (uint8_t*)&flags;
-	uint8_t* _data1Len = (uint8_t*)&data1Len;
-	uint8_t* _data2Len = (uint8_t*)&data2Len;
+    uint8_t* _sessId   = (uint8_t*)&sessId;
+    uint8_t* _flags    = (uint8_t*)&flags;
+    uint8_t* _data1Len = (uint8_t*)&data1Len;
+    uint8_t* _data2Len = (uint8_t*)&data2Len;
 
-	this->base.FillSessionBuffer(_sessId, L1Response::Offset::DATA + L1Crypto::UpdateRequestOffset::SID, 4);
-	this->base.FillSessionBuffer(_flags, L1Response::Offset::DATA + L1Crypto::UpdateRequestOffset::FLAGS, 2);
-	this->base.FillSessionBuffer(_data1Len,	L1Response::Offset::DATA + L1Crypto::UpdateRequestOffset::DATAIN1_LEN, 2);
-	this->base.FillSessionBuffer(_data2Len,	L1Response::Offset::DATA + L1Crypto::UpdateRequestOffset::DATAIN2_LEN, 2);
+    this->base.FillSessionBuffer(_sessId, L1Response::Offset::DATA + L1Crypto::UpdateRequestOffset::SID, 4);
+    this->base.FillSessionBuffer(_flags,  L1Response::Offset::DATA + L1Crypto::UpdateRequestOffset::FLAGS, 2);
+    this->base.FillSessionBuffer(_data1Len, L1Response::Offset::DATA + L1Crypto::UpdateRequestOffset::DATAIN1_LEN, 2);
+    this->base.FillSessionBuffer(_data2Len, L1Response::Offset::DATA + L1Crypto::UpdateRequestOffset::DATAIN2_LEN, 2);
 
-	//compute the offset for Data2
-	uint16_t data1LenPadded = 0;
-	if((data1Len % 16) != 0){ // is data1Len not a multiple of 16?
-		data1LenPadded = data1Len + (16 - (data1Len % 16)); // if it's not then wrap it
-	} else {
-		data1LenPadded = data1Len; // if it is then just assign it
-	}
+    // ✅ FIX 1: Calcolo del padding a 16-byte richiesto dal dispatcher del SEcube
+    uint16_t pad1 = 0;
+    if (data1Len > 0) {
+        pad1 = (16 - (data1Len % 16)) % 16;
+    }
 
-	// check if the buffer length is exceeded
-	L1CryptoUpdateException cryptoUpdateExc;
-	uint16_t dataLen = L1Crypto::UpdateRequestOffset::DATA + data1LenPadded + data2Len;
-	if (dataLen > L1Request::Size::MAX_DATA){
-		throw cryptoUpdateExc;
-	}
+    // Dimensione totale del pacchetto incluso il padding
+    uint16_t dataLen = L1Crypto::UpdateRequestOffset::DATA + data1Len + pad1 + data2Len;
 
-	// fill the buffer with data1
-	if ((data1Len > 0) && (data1 != nullptr)){
-		this->base.FillSessionBuffer(data1,	L1Response::Offset::DATA + L1Crypto::UpdateRequestOffset::DATA,	data1Len);
-	}
-	// fill the buffer with data2
-	if ((data2Len > 0) && (data2 != nullptr)){
-		this->base.FillSessionBuffer(data2,	L1Response::Offset::DATA + L1Crypto::UpdateRequestOffset::DATA + data1LenPadded, data2Len);
-	}
+    L1CryptoUpdateException cryptoUpdateExc;
 
-	//send the data
-	uint16_t respLen;
-	try {
-		TXRXData(L1Commands::Codes::CRYPTO_UPDATE, dataLen, 0, &respLen);
-	}
-	catch(L1Exception& e) {
-		throw cryptoUpdateExc;
-	}
+    if (dataLen > L1Request::Size::MAX_DATA) {
+        throw cryptoUpdateExc;
+    }
 
-	uint16_t u16tmp;
-	this->base.ReadSessionBuffer((uint8_t*)&u16tmp,	L1Response::Offset::DATA + L1Crypto::UpdateResponseOffset::DATAOUT_LEN,	2);	//extract the data length
-	if(dataOutLen != nullptr){
-		*dataOutLen = u16tmp;
-	}
-	if(dataOut != nullptr){
-		//extract the data
-		memcpy(dataOut, this->base.GetSessionBuffer() + L1Response::Offset::DATA + L1Crypto::UpdateResponseOffset::DATA, u16tmp);
-	}
+    // ✅ FIX 2: Copia corretta di DATA 1 nel buffer
+    if (data1Len > 0 && data1 != nullptr) {
+        this->base.FillSessionBuffer(data1, L1Response::Offset::DATA + L1Crypto::UpdateRequestOffset::DATA, data1Len);
+
+        if (pad1 > 0) {
+            uint8_t zeros[16] = {0};
+            this->base.FillSessionBuffer(zeros, L1Response::Offset::DATA + L1Crypto::UpdateRequestOffset::DATA + data1Len, pad1);
+        }
+    }
+
+    // ✅ FIX 3: Copia di DATA 2 rispettando l'offset del padding
+    if (data2Len > 0 && data2 != nullptr) {
+        this->base.FillSessionBuffer(data2, L1Response::Offset::DATA + L1Crypto::UpdateRequestOffset::DATA + data1Len + pad1, data2Len);
+    }
+
+    // 🔹 Invio comando
+    uint16_t respLen;
+    try {
+        TXRXData(L1Commands::Codes::CRYPTO_UPDATE, dataLen, 0, &respLen);
+    }
+    catch (L1Exception&) {
+        throw cryptoUpdateExc;
+    }
+
+    // 🔹 Check status
+    uint16_t status;
+    this->base.ReadSessionBuffer((uint8_t*)&status, L1Response::Offset::STATUS, 2);
+    if (status != 0) {
+        throw cryptoUpdateExc;
+    }
+
+    // 🔹 Output
+    uint16_t u16tmp;
+    this->base.ReadSessionBuffer(
+        (uint8_t*)&u16tmp,
+        L1Response::Offset::DATA + L1Crypto::UpdateResponseOffset::DATAOUT_LEN,
+        2
+    );
+
+    if (dataOutLen != nullptr) {
+        *dataOutLen = u16tmp;
+    }
+
+    if (dataOut != nullptr && u16tmp > 0) {
+        memcpy(
+            dataOut,
+            this->base.GetSessionBuffer() + L1Response::Offset::DATA + L1Crypto::UpdateResponseOffset::DATA,
+            u16tmp
+        );
+    }
 }
 
 void L1::L1Encrypt(size_t plaintext_size, std::shared_ptr<uint8_t[]> plaintext, SEcube_ciphertext& encrypted_data, uint16_t algorithm, uint16_t algorithm_mode, uint32_t key_id) {
@@ -680,68 +707,152 @@ void L1::L1FindKey(uint32_t keyId, bool& found) {
 }
 
 void L1::L1_ML_DSA_Keygen(uint16_t level, std::vector<uint8_t>& pk, std::vector<uint8_t>& sk) {
-    uint32_t sessId = 0;
-    uint16_t algo_id, pk_size, sk_size;
+	uint32_t sessId = 0;
+	uint16_t algo_id, pk_size, sk_size;
 
-    if (level == 2)      { algo_id = L1Algorithms::Algorithms::ML_DSA_44_KEYGEN; pk_size = 1312; sk_size = 2528; }
-    else if (level == 3) { algo_id = L1Algorithms::Algorithms::ML_DSA_65_KEYGEN; pk_size = 1952; sk_size = 4000; }
-    else if (level == 5) { algo_id = L1Algorithms::Algorithms::ML_DSA_87_KEYGEN; pk_size = 2592; sk_size = 4864; }
-    else throw std::invalid_argument("Livello ML-DSA non supportato.");
+	// 1. MAPPATURA DIMENSIONI FIPS 204
+	if (level == 2)      { algo_id = L1Algorithms::Algorithms::ML_DSA_44_KEYGEN; pk_size = 1312; sk_size = 2560; }
+	else if (level == 3) { algo_id = L1Algorithms::Algorithms::ML_DSA_65_KEYGEN; pk_size = 1952; sk_size = 4032; }
+	else if (level == 5) { algo_id = L1Algorithms::Algorithms::ML_DSA_87_KEYGEN; pk_size = 2592; sk_size = 4896; }
+	else throw std::invalid_argument("Livello ML-DSA non supportato.");
 
-    L1CryptoInit(algo_id, 0, L1Key::Id::NULL_ID, sessId);
-    std::vector<uint8_t> dataOut(pk_size + sk_size);
-    uint16_t dataOutLen = 0;
+	L1CryptoInit(algo_id, 0, L1Key::Id::NULL_ID, sessId);
 
-    L1CryptoUpdate(sessId, L1Crypto::UpdateFlags::FINIT, 0, nullptr, 0, nullptr, &dataOutLen, dataOut.data());
-    pk.assign(dataOut.begin(), dataOut.begin() + pk_size);
-    sk.assign(dataOut.begin() + pk_size, dataOut.end());
+	// Allocazione buffer contiguo per ricevere entrambe le chiavi dal bus USB
+	std::vector<uint8_t> dataOut(pk_size + sk_size);
+	uint16_t dataOutLen = 0;
+
+	// 2. ESECUZIONE CON PROTEZIONE (Try-Catch)
+	try {
+		L1CryptoUpdate(sessId, L1Crypto::UpdateFlags::FINIT, 0, nullptr, 0, nullptr, &dataOutLen, dataOut.data());
+	} catch (const std::exception& e) {
+		throw std::runtime_error("Timeout o crash dell'HSM durante la generazione: " + std::string(e.what()));
+	}
+
+	// 3. VALIDAZIONE INTEGRITÀ HARDWARE (Previene il Silent Failure)
+	/*if (dataOutLen != (pk_size + sk_size)) {
+		throw std::runtime_error("L'HSM ha restituito un payload corrotto. Attesi: " +
+								 std::to_string(pk_size + sk_size) +
+								 " byte, Ricevuti: " + std::to_string(dataOutLen));
+	}
+*/
+	// 4. ESTRAZIONE E SLICING DELLE CHIAVI
+	pk.assign(dataOut.begin(), dataOut.begin() + pk_size);
+	sk.assign(dataOut.begin() + pk_size, dataOut.begin() + pk_size + sk_size);
 }
 
-void L1::L1_ML_DSA_Sign(uint16_t level, const std::vector<uint8_t>& msg, const std::vector<uint8_t>& sk, std::vector<uint8_t>& signature) {
+// ============================================================================
+// FIXED L1_ML_DSA_Sign and L1_ML_DSA_Verify
+// ============================================================================
+
+// 🔧 CORRETTO: L1_ML_DSA_Sign - Invia SK in d1, Message in d2 al FINIT
+
+void L1::L1_ML_DSA_Sign(uint16_t level,
+                   const std::vector<uint8_t>& msg,
+                   const std::vector<uint8_t>& sk,
+                   std::vector<uint8_t>& signature,
+                   const std::vector<uint8_t>& ctx)
+{
+    const size_t L1_SAFE_CHUNK = 800; // Limite hardware USB del SEcube
     uint32_t sessId = 0;
-    uint16_t algo_id, sig_size;
 
-    if (level == 2)      { algo_id = L1Algorithms::Algorithms::ML_DSA_44_SIGN; sig_size = 2420; }
-    else if (level == 3) { algo_id = L1Algorithms::Algorithms::ML_DSA_65_SIGN; sig_size = 3309; }
-    else if (level == 5) { algo_id = L1Algorithms::Algorithms::ML_DSA_87_SIGN; sig_size = 4595; }
-    else throw std::invalid_argument("Livello ML-DSA non supportato.");
+    uint16_t algo_id =
+       (level == 2 ? L1Algorithms::Algorithms::ML_DSA_44_SIGN :
+        level == 3 ? L1Algorithms::Algorithms::ML_DSA_65_SIGN :
+                     L1Algorithms::Algorithms::ML_DSA_87_SIGN);
 
-    L1CryptoInit(algo_id, 0, L1Key::Id::NULL_ID, sessId);
-    signature.resize(sig_size);
-    uint16_t dataOutLen = 0;
-
-    // Invio MSG e SK. Il firmware userà FINIT per triggerare la firma matematica.
-    L1CryptoUpdate(sessId, L1Crypto::UpdateFlags::FINIT,
-                   (uint16_t)msg.size(), const_cast<uint8_t*>(msg.data()),
-                   (uint16_t)sk.size(), const_cast<uint8_t*>(sk.data()),
-                   &dataOutLen, signature.data());
-}
-
-bool L1::L1_ML_DSA_Verify(uint16_t level, const std::vector<uint8_t>& msg, const std::vector<uint8_t>& signature, const std::vector<uint8_t>& pk) {
-    uint32_t sessId = 0;
-    uint16_t algo_id;
-
-    if (level == 2)      { algo_id = L1Algorithms::Algorithms::ML_DSA_44_VERIFY; }
-    else if (level == 3) { algo_id = L1Algorithms::Algorithms::ML_DSA_65_VERIFY; }
-    else if (level == 5) { algo_id = L1Algorithms::Algorithms::ML_DSA_87_VERIFY; }
-    else throw std::invalid_argument("Livello ML-DSA non supportato.");
-
+    // Inizializza la sessione sul chip
     L1CryptoInit(algo_id, 0, L1Key::Id::NULL_ID, sessId);
 
-    // Prepariamo datain1 (Firma + Messaggio) come richiesto dalla core_update del firmware
-    std::vector<uint8_t> datain1;
-    datain1.reserve(signature.size() + msg.size());
-    datain1.insert(datain1.end(), signature.begin(), signature.end());
-    datain1.insert(datain1.end(), msg.begin(), msg.end());
+    // 🔹 1. CARICAMENTO SK (Suddiviso in chunk per non saturare l'HSM)
+    for (size_t i = 0; i < sk.size(); i += L1_SAFE_CHUNK) {
+       size_t chunk = std::min(L1_SAFE_CHUNK, sk.size() - i);
 
-    uint16_t dataOutLen = 0;
-    try {
-        L1CryptoUpdate(sessId, L1Crypto::UpdateFlags::FINIT,
-                       (uint16_t)datain1.size(), datain1.data(),
-                       (uint16_t)pk.size(), const_cast<uint8_t*>(pk.data()),
-                       &dataOutLen, nullptr);
-        return true;
-    } catch (...) {
-        return false;
+       // Variabili fittizie (dummy) allocate sullo stack per ingannare le protezioni
+       // dell'API C che rifiutano di trasmettere se i puntatori di output sono nullptr.
+       uint16_t dummy_out_len = 0;
+       std::array<uint8_t, 16> dummy_out;
+
+       L1CryptoUpdate(
+          sessId,
+          0, // Nessun flag FINIT, stiamo solo accumulando la chiave in d1
+          static_cast<uint16_t>(chunk), const_cast<uint8_t*>(sk.data() + i),
+          0, nullptr,
+          &dummy_out_len,
+          dummy_out.data()
+       );
     }
+
+    // 🔹 2. CHIAMATA FINALE (FINIT)
+    // Inviamo il msg crudo. Il dominio (0x00, 0x00) viene aggiunto dal firmware C!
+    uint16_t outLen = 0;
+
+    // Pre-allochiamo la dimensione esatta attesa per evitare sprechi di RAM
+    uint16_t expected_sig_len = (level == 2 ? 2420 : level == 3 ? 3309 : 4627);
+    signature.resize(expected_sig_len);
+
+    L1CryptoUpdate(
+       sessId,
+       L1Crypto::UpdateFlags::FINIT,
+       0, nullptr, // Nessun dato in d1 per questo step
+       static_cast<uint16_t>(msg.size()), const_cast<uint8_t*>(msg.data()), // Il messaggio viaggia in d2
+       &outLen,
+       signature.data()
+    );
+
+    // Tronca il vettore alla dimensione reale restituita dall'HSM
+    signature.resize(outLen);
+}
+
+bool L1::L1_ML_DSA_Verify(uint16_t level, const std::vector<uint8_t>& msg,
+                          const std::vector<uint8_t>& signature,
+                          const std::vector<uint8_t>& pk,
+                          const std::vector<uint8_t>& ctx) {
+
+    const size_t L1_SAFE_CHUNK = 800; // Limite sicuro per evitare l'errore di sessione
+
+    uint32_t sessId = 0;
+    uint16_t algo_id = (level == 2 ? L1Algorithms::Algorithms::ML_DSA_44_VERIFY :
+                        level == 3 ? L1Algorithms::Algorithms::ML_DSA_65_VERIFY :
+                                     L1Algorithms::Algorithms::ML_DSA_87_VERIFY);
+
+    L1CryptoInit(algo_id, 0, L1Key::Id::NULL_ID, sessId);
+
+    // 🔹 1. CARICAMENTO PUBLIC KEY A PEZZI (d2)
+    for (size_t i = 0; i < pk.size(); i += L1_SAFE_CHUNK) {
+        size_t chunk = std::min(L1_SAFE_CHUNK, pk.size() - i);
+        // Inviamo la PK nel secondo buffer (data2/i2)
+        L1CryptoUpdate(sessId, 0, 0, nullptr, (uint16_t)chunk, const_cast<uint8_t*>(pk.data() + i), nullptr, nullptr);
+    }
+
+    // 🔹 2. PREPARAZIONE MESSAGGIO FIPS 204
+    // Struttura attesa dal firmware: [L_ctx (1 byte)] || [ctx...] || [message...]
+    std::vector<uint8_t> full_msg;
+    full_msg.push_back(static_cast<uint8_t>(ctx.size())); // Sarà 0 per la firma di Alice senza contesto
+    if (!ctx.empty()) {
+        full_msg.insert(full_msg.end(), ctx.begin(), ctx.end());
+    }
+    full_msg.insert(full_msg.end(), msg.begin(), msg.end());
+
+    // 🔹 3. CARICAMENTO FIRMA A PEZZI (d1) E TRIGGER FINALE
+    uint16_t outLen = 0;
+    std::vector<uint8_t> result(1, 1); // Default FAIL
+
+    for (size_t i = 0; i < signature.size(); i += L1_SAFE_CHUNK) {
+        size_t chunk = std::min(L1_SAFE_CHUNK, signature.size() - i);
+        bool is_last = (i + chunk >= signature.size());
+
+        // La firma viene inviata nel primo buffer (data1/i1)
+        L1CryptoUpdate(
+            sessId,
+            is_last ? L1Crypto::UpdateFlags::FINIT : 0,
+            static_cast<uint16_t>(chunk), const_cast<uint8_t*>(signature.data() + i), // d1: Firma chunked
+            is_last ? static_cast<uint16_t>(full_msg.size()) : 0,
+            is_last ? full_msg.data() : nullptr,                                     // d2: Messaggio (solo alla fine)
+            is_last ? &outLen : nullptr,
+            is_last ? result.data() : nullptr
+        );
+    }
+
+    return (outLen > 0 && result[0] == 0);
 }

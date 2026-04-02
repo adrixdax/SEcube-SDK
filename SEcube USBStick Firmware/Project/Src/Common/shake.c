@@ -35,7 +35,9 @@ int32_t shake128_squeeze(uint8_t *out, size_t outlen, keccak_state *state) {
 }
 
 int32_t shake128_squeezeblocks(uint8_t *out, size_t nblocks, keccak_state *state) {
-    keccak_squeezeblocks(out, nblocks, state->s, SHAKE128_RATE);
+    if(state == NULL || out == NULL) return SHAKE_RES_ERR;
+    // Calcola i byte totali (blocchi * rate) e lascia gestire la logica a keccak_squeeze
+    state->pos = keccak_squeeze(out, nblocks * SHAKE128_RATE, state->s, state->pos, SHAKE128_RATE);
     return SHAKE_RES_OK;
 }
 
@@ -66,6 +68,7 @@ int32_t shake256_squeeze(uint8_t *out, size_t outlen, keccak_state *state) {
 }
 
 int32_t shake256_squeezeblocks(uint8_t *out, size_t nblocks, keccak_state *state) {
-    keccak_squeezeblocks(out, nblocks, state->s, SHAKE256_RATE);
+    if(state == NULL || out == NULL) return SHAKE_RES_ERR;
+    state->pos = keccak_squeeze(out, nblocks * SHAKE256_RATE, state->s, state->pos, SHAKE256_RATE);
     return SHAKE_RES_OK;
 }

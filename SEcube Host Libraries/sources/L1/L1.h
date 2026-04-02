@@ -218,8 +218,8 @@ public:
 
 	// --- Implementazione API ML-DSA (Post-Quantum) ---
 	void L1_ML_DSA_Keygen(uint16_t level, std::vector<uint8_t>& pk, std::vector<uint8_t>& sk) override;
-	void L1_ML_DSA_Sign(uint16_t level, const std::vector<uint8_t>& msg, const std::vector<uint8_t>& sk, std::vector<uint8_t>& signature) override;
-	bool L1_ML_DSA_Verify(uint16_t level, const std::vector<uint8_t>& msg, const std::vector<uint8_t>& signature, const std::vector<uint8_t>& pk) override;
+	void L1_ML_DSA_Sign(uint16_t level, const std::vector<uint8_t>& msg, const std::vector<uint8_t>& sk, std::vector<uint8_t>& signature, const std::vector<uint8_t>& ctx) override;
+	bool L1_ML_DSA_Verify(uint16_t level, const std::vector<uint8_t>& msg, const std::vector<uint8_t>& signature, const std::vector<uint8_t>& pk, const std::vector<uint8_t>& ctx) override;
 };
 
 #endif

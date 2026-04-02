@@ -222,8 +222,9 @@ void L1::TXRXData(uint16_t cmd, uint16_t reqLen, uint16_t cmdFlags, uint16_t* re
 	*respLen = u16tmp;
 	memcpy((void*)&u16tmp, (const void*)(this->base.GetSessionBuffer() + L1Response::Offset::STATUS), 2);
 
-	if (u16tmp != L0ErrorCodes::Error::OK)
+	if (u16tmp != L0ErrorCodes::Error::OK) {
 		throw commExc;
+	}
 }
 
 void L1::Se3PayloadCryptoInit() {

@@ -92,7 +92,7 @@ public:
 		switch (security_level) {
 			case 2: return 2420; // ML-DSA-44
 			case 3: return 3309; // ML-DSA-65
-			case 5: return 4595; // ML-DSA-87
+			case 5: return 4627; // <--- FIPS 204 CORRETTO (ERA 4595)
 			default: return 0;
 		}
 	}
@@ -113,8 +113,8 @@ public:
 	virtual void L1GetAlgorithms(std::vector<se3Algo>& algorithmsArray) = 0;
 
 	virtual void L1_ML_DSA_Keygen(uint16_t level, std::vector<uint8_t>& pk, std::vector<uint8_t>& sk) = 0;
-	virtual void L1_ML_DSA_Sign(uint16_t level, const std::vector<uint8_t>& msg, const std::vector<uint8_t>& sk, std::vector<uint8_t>& signature) = 0;
-	virtual bool L1_ML_DSA_Verify(uint16_t level, const std::vector<uint8_t>& msg, const std::vector<uint8_t>& signature, const std::vector<uint8_t>& pk) = 0;
+	virtual void L1_ML_DSA_Sign(uint16_t level, const std::vector<uint8_t>& msg, const std::vector<uint8_t>& sk, std::vector<uint8_t>& signature, const std::vector<uint8_t>& ctx = {}) = 0;
+	virtual bool L1_ML_DSA_Verify(uint16_t level, const std::vector<uint8_t>& msg, const std::vector<uint8_t>& signature, const std::vector<uint8_t>& pk, const std::vector<uint8_t>& ctx = {}) = 0;
 };
 
 #endif

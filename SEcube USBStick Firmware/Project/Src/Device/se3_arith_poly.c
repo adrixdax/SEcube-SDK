@@ -4,8 +4,13 @@
 #include "se3_arith_poly.h"
 #include "se3_arith_reduce.h"
 #include "se3_algo_shake.h"
-#include "se3_algo_dilithium_symmetric.h"
+#include "se3_algo_mldsa_symmetric.h"
 #include "Keccak.h"
+
+
+static inline uint32_t ct_lt(uint32_t a, uint32_t b) {
+    return (uint32_t)(-(int32_t)((a - b) >> 31));
+}
 
 /* ========================================================================= *
  * Funzioni di Hashing, Arrotondamento e Hint
@@ -53,32 +58,21 @@ void poly_challenge(poly *c, const uint8_t *seed, const dilithium_conf_t *conf) 
 
 int poly_chknorm(const poly *a, int32_t B) {
     int32_t ret = 0;
-    const int32_t limit = B;
-    const int32_t *p = a->coeffs;
-
-    for (int i = 0; i < DIL_N / 4; i++) {
-        int32_t v0 = p[0];
-        int32_t v1 = p[1];
-        int32_t v2 = p[2];
-        int32_t v3 = p[3];
-        p += 4;
-
-        int32_t m0 = v0 >> 31;
-        int32_t m1 = v1 >> 31;
-        int32_t m2 = v2 >> 31;
-        int32_t m3 = v3 >> 31;
-
-        v0 = (v0 ^ m0) - m0;
-        v1 = (v1 ^ m1) - m1;
-        v2 = (v2 ^ m2) - m2;
-        v3 = (v3 ^ m3) - m3;
-
-        ret |= (limit - 1 - v0);
-        ret |= (limit - 1 - v1);
-        ret |= (limit - 1 - v2);
-        ret |= (limit - 1 - v3);
+    // Usiamo B - 1 per permettere un controllo rigoroso tramite bit di segno
+    int32_t limit = B - 1;
+    // Loop singolo: sicuro per la memoria, facilmente vettorizzabile dal compilatore
+    for (unsigned int i = 0; i < DIL_N; i++) {
+        // 1. Lettura sicura a 32-bit (previene l'Hard Fault da disallineamento)
+        int32_t v = a->coeffs[i];
+        // 2. Calcolo del valore assoluto senza usare "if" (Constant-Time)
+        int32_t mask = v >> 31;
+        v = (v ^ mask) - mask;
+        // 3. Accumulo dell'errore. Se v > limit, (limit - v) diventa negativo
+        // e il suo 31esimo bit (quello del segno) diventa 1.
+        ret |= (limit - v);
     }
-
+    // Sposta il bit di segno in prima posizione.
+    // Ritorna 1 (Fail) se almeno un coeff era troppo grande, 0 (Success) altrimenti.
     return (uint32_t)ret >> 31;
 }
 
@@ -101,14 +95,21 @@ void polyt0_pack(uint8_t *r, const poly *a) {
         t5 = offset - coeffs[i+5];
         t6 = offset - coeffs[i+6];
         t7 = offset - coeffs[i+7];
-
         w0 = t0 | (t1 << 13) | (t2 << 26);
         w1 = (t2 >> 6) | (t3 << 7) | (t4 << 20);
         w2 = (t4 >> 12) | (t5 << 1) | (t6 << 14) | (t7 << 27);
-
-        memcpy(r + 0, &w0, 4);
-        memcpy(r + 4, &w1, 4);
-        memcpy(r + 8, &w2, 4);
+        r[0] = (uint8_t)(w0);
+        r[1] = (uint8_t)(w0 >> 8);
+        r[2] = (uint8_t)(w0 >> 16);
+        r[3] = (uint8_t)(w0 >> 24);
+        r[4] = (uint8_t)(w1);
+        r[5] = (uint8_t)(w1 >> 8);
+        r[6] = (uint8_t)(w1 >> 16);
+        r[7] = (uint8_t)(w1 >> 24);
+        r[8]  = (uint8_t)(w2);
+        r[9]  = (uint8_t)(w2 >> 8);
+        r[10] = (uint8_t)(w2 >> 16);
+        r[11] = (uint8_t)(w2 >> 24);
         r[12] = (uint8_t)(t7 >> 5);
         r += 13;
     }
@@ -140,25 +141,37 @@ void polyt0_unpack(poly *r, const uint8_t *a) {
 
 void polyeta_pack(uint8_t *r, const poly *a, const dilithium_conf_t *conf) {
     const int32_t *coeffs = a->coeffs;
+    unsigned int i;
+
     if (conf->eta == 2) {
-        for(unsigned int i = 0; i < DIL_N/8; ++i) {
+        // ML-DSA-44: Impacchetta 8 coefficienti in 3 byte
+        for(i = 0; i < DIL_N / 8; ++i) {
             uint32_t w;
-            w  = (uint32_t)(2 - coeffs[8*i+0]);
-            w |= (uint32_t)(2 - coeffs[8*i+1]) << 3;
-            w |= (uint32_t)(2 - coeffs[8*i+2]) << 6;
-            w |= (uint32_t)(2 - coeffs[8*i+3]) << 9;
-            w |= (uint32_t)(2 - coeffs[8*i+4]) << 12;
-            w |= (uint32_t)(2 - coeffs[8*i+5]) << 15;
-            w |= (uint32_t)(2 - coeffs[8*i+6]) << 18;
-            w |= (uint32_t)(2 - coeffs[8*i+7]) << 21;
-            memcpy(r + 3*i, &w, 3);
+
+            // Maschera bit-a-bit (& 7) per bloccare il "bit-bleeding" dei numeri negativi
+            w  =  ((uint32_t)(2 - coeffs[8*i+0]) & 7);
+            w |= (((uint32_t)(2 - coeffs[8*i+1]) & 7) << 3);
+            w |= (((uint32_t)(2 - coeffs[8*i+2]) & 7) << 6);
+            w |= (((uint32_t)(2 - coeffs[8*i+3]) & 7) << 9);
+            w |= (((uint32_t)(2 - coeffs[8*i+4]) & 7) << 12);
+            w |= (((uint32_t)(2 - coeffs[8*i+5]) & 7) << 15);
+            w |= (((uint32_t)(2 - coeffs[8*i+6]) & 7) << 18);
+            w |= (((uint32_t)(2 - coeffs[8*i+7]) & 7) << 21);
+
+            // Scrittura diretta in memoria (più veloce e sicura del memcpy)
+            r[3*i+0] = (uint8_t)(w);
+            r[3*i+1] = (uint8_t)(w >> 8);
+            r[3*i+2] = (uint8_t)(w >> 16);
         }
     } else if (conf->eta == 4) {
-        for(unsigned int i = 0; i < DIL_N/2; ++i) {
-            r[i] = (uint8_t)((4 - coeffs[2*i+0]) | ((4 - coeffs[2*i+1]) << 4));
+        // ML-DSA-65 / ML-DSA-87: Impacchetta 2 coefficienti in 1 byte
+        for(i = 0; i < DIL_N / 2; ++i) {
+            // Maschera bit-a-bit (& 15) per bloccare il "bit-bleeding"
+            r[i] = (uint8_t)(((4 - coeffs[2*i+0]) & 15) | (((4 - coeffs[2*i+1]) & 15) << 4));
         }
     }
 }
+
 
 void polyeta_unpack(poly *r, const uint8_t *a, const dilithium_conf_t *conf) {
     int32_t *coeffs = r->coeffs;
@@ -191,13 +204,20 @@ void polyeta_unpack(poly *r, const uint8_t *a, const dilithium_conf_t *conf) {
     }
 }
 
+// In se3_arith_poly.c
 void polyt1_pack(uint8_t *r, const poly *a) {
     for(unsigned int i = 0; i < DIL_N/4; ++i) {
-        r[5*i+0] = (a->coeffs[4*i+0] >> 0);
-        r[5*i+1] = (a->coeffs[4*i+0] >> 8) | (a->coeffs[4*i+1] << 2);
-        r[5*i+2] = (a->coeffs[4*i+1] >> 6) | (a->coeffs[4*i+2] << 4);
-        r[5*i+3] = (a->coeffs[4*i+2] >> 4) | (a->coeffs[4*i+3] << 6);
-        r[5*i+4] = (a->coeffs[4*i+3] >> 2);
+        // Forza i coefficienti a 10 bit (0x3FF)
+        uint32_t t0 = (uint32_t)a->coeffs[4*i+0] & 0x3FF;
+        uint32_t t1 = (uint32_t)a->coeffs[4*i+1] & 0x3FF;
+        uint32_t t2 = (uint32_t)a->coeffs[4*i+2] & 0x3FF;
+        uint32_t t3 = (uint32_t)a->coeffs[4*i+3] & 0x3FF;
+
+        r[5*i+0] = (t0 >> 0);
+        r[5*i+1] = (t0 >> 8) | (t1 << 2);
+        r[5*i+2] = (t1 >> 6) | (t2 << 4);
+        r[5*i+3] = (t2 >> 4) | (t3 << 6);
+        r[5*i+4] = (t3 >> 2);
     }
 }
 
@@ -309,37 +329,56 @@ unsigned int rej_eta(int32_t *a, unsigned int len, const uint8_t *buf, unsigned 
     return ctr;
 }
 
-unsigned int rej_uniform(int32_t *a, unsigned int len, const uint8_t *buf, unsigned int buflen) {
-    unsigned int ctr = 0, pos = 0;
-    uint32_t t;
+unsigned int rej_uniform(int32_t *a, unsigned int len,
+                            const uint8_t *buf, unsigned int buflen) {
+    unsigned int ctr = 0;
+    unsigned int pos = 0;
 
-    while(ctr < len && pos + 3 <= buflen) {
-        memcpy(&t, buf + pos, 4);
-        pos += 3;
-        t &= 0x7FFFFF;
-
-        if(t < DIL_Q) {
-            a[ctr++] = (int32_t)t;
+    while (pos + 2 < buflen && ctr < len) {
+        uint8_t b0 = buf[pos];
+        uint8_t b1 = buf[pos+1];
+        uint8_t b2 = buf[pos+2];
+        // azzera il top bit di b2 senza branch
+        uint8_t mask_top = (b2 >> 7);      // 1 se b2 >= 128
+        b2 = b2 - (mask_top << 7);         // sottrai 128 se necessario
+        uint32_t t = ((uint32_t)b2 << 16) | ((uint32_t)b1 << 8) | b0;
+        // maschera costante: 0xFFFFFFFF se t < DIL_Q, 0x0 altrimenti
+        uint32_t m = (t - DIL_Q) >> 31;   // m = 1 se t < DIL_Q
+        m = -m;                           // m = 0xFFFFFFFF se t < DIL_Q, 0 altrimenti
+        // aggiorna l’array in modo costante usando la maschera
+        if (ctr < len) {                  // indice array fisso, ma si può rendere ancora più costante
+            a[ctr] = (t & m) | (a[ctr] & ~m);
         }
+        // incrementa ctr in costante tempo usando maschera
+        ctr += m & 1;                      // se t < DIL_Q incrementa, altrimenti no
+        pos += 3;
     }
     return ctr;
 }
 
-void poly_uniform(poly *a, const uint8_t seed[DIL_SEEDBYTES], const uint16_t nonce) {
-    uint8_t buf[POLY_UNIFORM_BYTES + 4] __attribute__((aligned(8)));
-    unsigned int buflen = POLY_UNIFORM_BYTES;
-    stream128_state state;
+void poly_uniform(poly *a, const uint8_t seed[DIL_SEEDBYTES], uint16_t nonce) {
+    unsigned int ctr = 0;
+    keccak_state state;
+    uint8_t ext_seed[34];
 
-    stream128_init(&state, seed, nonce);
-    stream128_squeezeblocks(buf, POLY_UNIFORM_NBLOCKS, &state);
-    unsigned int ctr = rej_uniform(a->coeffs, DIL_N, buf, buflen);
+    // 1. Preparazione del seed (già corretta)
+    memcpy(ext_seed, seed, 32);
+    ext_seed[32] = nonce & 0xFF;
+    ext_seed[33] = (nonce >> 8) & 0xFF;
 
-    while(ctr < DIL_N) {
-        unsigned int off = buflen % 3;
-        if(off) memcpy(buf, buf + buflen - off, off);
-        stream128_squeezeblocks(buf + off, 1, &state);
-        buflen = DIL_STREAM128_BLOCKBYTES + off;
-        ctr += rej_uniform(a->coeffs + ctr, DIL_N - ctr, buf, buflen);
+    shake128_init(&state);
+    shake128_absorb(&state, ext_seed, 34);
+    shake128_finalize(&state);
+
+#define DIL_FAST_BUFFER_BLOCKS 5
+    uint8_t buf[DIL_FAST_BUFFER_BLOCKS * DIL_STREAM128_BLOCKBYTES];
+    shake128_squeezeblocks(buf, DIL_FAST_BUFFER_BLOCKS, &state);
+
+    ctr = rej_uniform(a->coeffs, DIL_N, buf, sizeof(buf));
+    while (ctr < DIL_N) {
+        uint8_t extra_buf[DIL_STREAM128_BLOCKBYTES];
+        shake128_squeezeblocks(extra_buf, 3, &state);
+        ctr += rej_uniform(a->coeffs + ctr, DIL_N - ctr, extra_buf, sizeof(extra_buf));
     }
 }
 
@@ -374,7 +413,7 @@ void poly_uniform_eta(poly *a, const uint8_t seed[DIL_CRHBYTES], uint16_t nonce,
  * ========================================================================= */
 
 __attribute__((optimize("O3")))
-void poly_pointwise_montgomery(poly *__restrict__ c,
+void poly_pointwise_montgomery(poly * c,
                                const poly *__restrict__ a,
                                const poly *__restrict__ b)
 {
@@ -405,7 +444,7 @@ void poly_add(poly * __restrict__ c, const poly * __restrict__ a, const poly * _
 }
 
 __attribute__((optimize("O3")))
-void poly_sub(poly * __restrict__ c, const poly * __restrict__ a, const poly * __restrict__ b) {
+void poly_sub(poly * c, const poly * __restrict__ a, const poly * __restrict__ b) {
     for (unsigned int i = 0; i < DIL_N; i += 2) {
         c->coeffs[i]   =  a->coeffs[i] -  b->coeffs[i];
         c->coeffs[i+1] =  a->coeffs[i+1] -  b->coeffs[i+1];
@@ -414,11 +453,13 @@ void poly_sub(poly * __restrict__ c, const poly * __restrict__ a, const poly * _
 
 __attribute__((optimize("O3")))
 void poly_caddq(poly *a) {
-    for(unsigned int i = 0; i < DIL_N; i += 2) {
-        int32_t x0 = a->coeffs[i];
-        int32_t x1 = a->coeffs[i+1];
-        a->coeffs[i]   = x0 + (DIL_Q & (x0 >> 31));
-        a->coeffs[i+1] = x1 + (DIL_Q & (x1 >> 31));
+    for(unsigned int i = 0; i < DIL_N; i++) {
+        int32_t x = a->coeffs[i];
+        int32_t mask1 = x >> 31;
+        x += (mask1 & DIL_Q);
+        int32_t mask2 = x >> 31;
+        x += (mask2 & DIL_Q);
+        a->coeffs[i] = x;
     }
 }
 

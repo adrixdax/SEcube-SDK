@@ -1,6 +1,9 @@
 #include "Keccak.h"
+#include <string.h>
 
-static const uint64_t KeccakF_RoundConstants[24] = {
+#define NROUNDS 24
+
+static const uint64_t KeccakF_RoundConstants[NROUNDS] = {
     0x0000000000000001ULL, 0x0000000000008082ULL, 0x800000000000808aULL,
     0x8000000080008000ULL, 0x000000000000808bULL, 0x0000000080000001ULL,
     0x8000000080008081ULL, 0x8000000000008009ULL, 0x000000000000008aULL,
@@ -11,99 +14,103 @@ static const uint64_t KeccakF_RoundConstants[24] = {
     0x8000000000008080ULL, 0x0000000080000001ULL, 0x8000000080008008ULL
 };
 
-static const int KeccakF_RotationConstants[25] = {
-     0,  1, 62, 28, 27,
-    36, 44,  6, 55, 20,
-     3, 10, 43, 25, 39,
-    41, 45, 15, 21,  8,
-    18,  2, 61, 56, 14
+static const uint8_t keccak_rho_offsets[24] = {
+    1,  3,  6,  10, 15, 21, 28, 36, 45, 55, 2,  14,
+    27, 41, 56, 8,  25, 43, 62, 18, 39, 61, 20, 44
 };
 
-static const int KeccakF_PiLane[25] = {
-    10,  7, 11, 17, 18,
-     3,  5, 16,  8, 21,
-    24,  4, 15, 23, 19,
-    13, 12,  2, 20, 14,
-    22,  9,  6,  1,  0
+static const uint8_t keccak_pi_lane[24] = {
+    10, 7,  11, 17, 18, 3,  5,  16, 8,  21, 24, 4,
+    15, 23, 19, 13, 12, 2,  20, 14, 22, 9,  6,  1
 };
 
-/* --- Permutazione Core Keccak-f[1600] --- */
 void KeccakF1600_StatePermute(uint64_t state[25]) {
-    int round, x, y;
-    uint64_t tempA[25];
+    int round, j;
     uint64_t C[5], D[5];
+    uint64_t temp, temp2;
 
-    for (round = 0; round < 24; round++) {
-        // Step Theta
-        for (x = 0; x < 5; x++) {
-            C[x] = state[x] ^ state[x + 5] ^ state[x + 10] ^ state[x + 15] ^ state[x + 20];
-        }
-        for (x = 0; x < 5; x++) {
-            D[x] = C[(x + 4) % 5] ^ ROL64(C[(x + 1) % 5], 1);
-        }
-        for (x = 0; x < 5; x++) {
-            for (y = 0; y < 5; y++) {
-                state[x + 5 * y] ^= D[x];
-            }
-        }
+    for (round = 0; round < NROUNDS; round++) {
+        // Theta
+        C[0] = state[0] ^ state[5] ^ state[10] ^ state[15] ^ state[20];
+        C[1] = state[1] ^ state[6] ^ state[11] ^ state[16] ^ state[21];
+        C[2] = state[2] ^ state[7] ^ state[12] ^ state[17] ^ state[22];
+        C[3] = state[3] ^ state[8] ^ state[13] ^ state[18] ^ state[23];
+        C[4] = state[4] ^ state[9] ^ state[14] ^ state[19] ^ state[24];
 
-        // Step Rho e Pi
-        for (x = 0; x < 5; x++) {
-            for (y = 0; y < 5; y++) {
-                tempA[KeccakF_PiLane[x + 5 * y]] = ROL64(state[x + 5 * y], KeccakF_RotationConstants[x + 5 * y]);
-            }
+        D[0] = C[4] ^ ROL64(C[1], 1);
+        D[1] = C[0] ^ ROL64(C[2], 1);
+        D[2] = C[1] ^ ROL64(C[3], 1);
+        D[3] = C[2] ^ ROL64(C[4], 1);
+        D[4] = C[3] ^ ROL64(C[0], 1);
+
+        for (j = 0; j < 25; j++) {
+            state[j] ^= D[j % 5];
         }
 
-        // Step Chi
-        for (y = 0; y < 5; y++) {
-            for (x = 0; x < 5; x++) {
-                state[x + 5 * y] = tempA[x + 5 * y] ^ ((~tempA[((x + 1) % 5) + 5 * y]) & tempA[((x + 2) % 5) + 5 * y]);
-            }
+        // Rho & Pi
+        temp = state[1];
+        for (int i = 0; i < 24; i++) {
+            j = keccak_pi_lane[i];
+            temp2 = state[j];
+            state[j] = ROL64(temp, keccak_rho_offsets[i]);
+            temp = temp2;
         }
 
-        // Step Iota
+        // Chi
+        for (j = 0; j < 25; j += 5) {
+            C[0] = state[j+0]; C[1] = state[j+1]; C[2] = state[j+2];
+            C[3] = state[j+3]; C[4] = state[j+4];
+
+            state[j+0] ^= (~C[1]) & C[2];
+            state[j+1] ^= (~C[2]) & C[3];
+            state[j+2] ^= (~C[3]) & C[4];
+            state[j+3] ^= (~C[4]) & C[0];
+            state[j+4] ^= (~C[0]) & C[1];
+        }
+
+        // Iota
         state[0] ^= KeccakF_RoundConstants[round];
     }
 }
 
-/* --- Funzioni di gestione della spugna (Assorbimento ed Estrazione) --- */
 unsigned int keccak_absorb(uint64_t s[25], unsigned int pos, unsigned int r, const uint8_t *in, size_t inlen) {
-    while(inlen > 0) {
-        if(pos == 0 && inlen >= r) {
-            for(unsigned int i = 0; i < r / 8; i++) {
-                s[i] ^= load64(in + i * 8);
-            }
+    size_t i = 0;
+    while (i < inlen) {
+        size_t len = r - pos;
+        if (inlen - i < len) len = inlen - i;
+        for (size_t j = 0; j < len; ++j) {
+            ((uint8_t*)s)[pos + j] ^= in[i + j];
+        }
+        pos += len;
+        i += len;
+        if (pos == r) {
             KeccakF1600_StatePermute(s);
-            in += r;
-            inlen -= r;
-        } else {
-            s[pos / 8] ^= (uint64_t)in[0] << (8 * (pos % 8));
-            in++;
-            inlen--;
-            pos++;
-            if(pos == r) {
-                KeccakF1600_StatePermute(s);
-                pos = 0;
-            }
+            pos = 0;
         }
     }
     return pos;
 }
 
 void keccak_finalize(uint64_t s[25], unsigned int pos, unsigned int r, uint8_t p) {
-    s[pos / 8] ^= (uint64_t)p << (8 * (pos % 8));
-    s[(r - 1) / 8] ^= 0x8000000000000000ULL;
+    ((uint8_t*)s)[pos] ^= p;
+    ((uint8_t*)s)[r - 1] ^= 0x80;
     KeccakF1600_StatePermute(s);
 }
 
 unsigned int keccak_squeeze(uint8_t *out, size_t outlen, uint64_t s[25], unsigned int pos, unsigned int r) {
-    for(size_t i = 0; i < outlen; i++) {
-        out[i] = (uint8_t)(s[pos / 8] >> (8 * (pos % 8)));
-        pos++;
-        if(pos == r) {
+    size_t i = 0;
+    while (i < outlen) {
+        if (pos == r) {
             KeccakF1600_StatePermute(s);
             pos = 0;
         }
+        size_t len = r - pos;
+        if (outlen - i < len) len = outlen - i;
+        for (size_t j = 0; j < len; ++j) {
+            out[i + j] = ((uint8_t*)s)[pos + j];
+        }
+        pos += len;
+        i += len;
     }
     return pos;
 }

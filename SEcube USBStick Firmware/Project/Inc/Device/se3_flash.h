@@ -25,8 +25,13 @@
 #pragma once
 
 #ifndef CUBESIM
-#include "stm32f4xx.h"
+#ifndef SIMULAZIONE_PC
+  #include "stm32f4xx.h"
 #include "stm32f4xx_hal.h"
+#else
+  #include <stdint.h>
+  #include <string.h>
+#endif
 #include <stdbool.h>
 #define SE3_FLASH_S0  (FLASH_SECTOR_10)
 #define SE3_FLASH_S1  (FLASH_SECTOR_11)

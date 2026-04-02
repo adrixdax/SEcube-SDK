@@ -1,5 +1,7 @@
+#pragma once  // <--- AGGIUNTO QUESTO
+
 #include <stdint.h>
-#include "se3_algo_dilithium_params.h"
+#include "se3_algo_mldsa_params.h"
 #include "se3_arith_poly.h"
 
 /* Vettori di polinomi di lunghezza L (usiamo il MAX per la RAM) */
@@ -12,6 +14,7 @@ void polyvecl_uniform_eta(polyvecl *v, const uint8_t seed[DIL_CRHBYTES], uint16_
 void polyvecl_uniform_gamma1(polyvecl *v, const uint8_t seed[DIL_CRHBYTES], uint16_t nonce, const dilithium_conf_t *conf);
 void polyvecl_reduce(polyvecl *v, const dilithium_conf_t *conf);
 void polyvecl_add(polyvecl *w, const polyvecl *u, const polyvecl *v, const dilithium_conf_t *conf);
+void polyvecl_caddq(polyvecl *v, const dilithium_conf_t *conf);
 void polyvecl_ntt(polyvecl *v, const dilithium_conf_t *conf);
 void polyvecl_invntt_tomont(polyvecl *v, const dilithium_conf_t *conf);
 void polyvecl_pointwise_poly_montgomery(polyvecl *r, const poly *a, const polyvecl *v, const dilithium_conf_t *conf);
@@ -45,13 +48,3 @@ void polyveck_pack_w1(uint8_t *r, const polyveck *w1, const dilithium_conf_t *co
 /* Operazioni sulle Matrici (Anche qui sostituiamo gli array fissi) */
 void polyvec_matrix_expand(polyvecl mat[DIL_K_MAX], const uint8_t rho[DIL_SEEDBYTES], const dilithium_conf_t *conf);
 void polyvec_matrix_pointwise_montgomery(polyveck *t, const polyvecl mat[DIL_K_MAX], const polyvecl *v, const dilithium_conf_t *conf);
-
-
-
-uint16_t se3_algo_polyvec_bench_init(se3_flash_key* key, uint16_t mode, uint8_t* ctx);
-
-uint16_t se3_algo_polyvec_bench_update(
-    uint8_t* ctx, uint16_t flags,
-    uint16_t datain1_len, const uint8_t* datain1,
-    uint16_t datain2_len, const uint8_t* datain2,
-    uint16_t* dataout_len, uint8_t* dataout);

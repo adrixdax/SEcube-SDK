@@ -16,6 +16,7 @@
 
 #include "shake.h"
 #include <string.h>
+#include "Keccak.h"
 
 /* =========================================================
  * SHAKE128

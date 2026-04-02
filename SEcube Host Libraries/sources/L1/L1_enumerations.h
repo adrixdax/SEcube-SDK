@@ -509,7 +509,7 @@ namespace L1Algorithms {
 			ML_DSA_87_KEYGEN = 16,
 			ML_DSA_87_SIGN   = 17,
 			ML_DSA_87_VERIFY = 18,
-			ALGORITHM_MAX    = 20
+			ALGORITHM_MAX    = 19
 		 };
 	};
 }

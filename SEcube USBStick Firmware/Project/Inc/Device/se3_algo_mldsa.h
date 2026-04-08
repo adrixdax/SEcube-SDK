@@ -23,6 +23,7 @@
 #include "se3_security_core.h"
 #include "se3_algo_mldsa_params.h"
 #include "Keccak.h"
+#include "se3_arith_poly.h"
 
 
 /* ============================================================================
@@ -118,8 +119,14 @@ typedef struct {
  * 4. ML-DSA-44 FUNCTION PROTOTYPES (Security Level 2)
  * ============================================================================
  */
+
+void mldsa_derive_sign_rhoprime(const uint8_t key[32], const uint8_t rnd[32],
+                                       const uint8_t mu[64], uint8_t rhoprime[64]);
+
 void mldsa_derive_keygen_seeds(const uint8_t zeta[32], uint8_t k, uint8_t l,
                                       uint8_t rho[32], uint8_t rhoprime[64], uint8_t key[32]);
+
+uint16_t poly_challenge_fips(poly *c, const uint8_t *seed, const dilithium_conf_t *conf);
 /**
  * @brief Initialize ML-DSA-44 KeyGen operation
  *

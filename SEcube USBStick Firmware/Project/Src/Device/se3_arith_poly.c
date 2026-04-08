@@ -181,15 +181,20 @@ void polyeta_unpack(poly *r, const uint8_t *a, const dilithium_conf_t *conf) {
     if (conf->eta == 2) {
         for(unsigned int i = 0; i < DIL_N/8; ++i) {
             uint32_t w = 0;
-            memcpy(&w, a + 3*i, 3);
-            coeffs[8*i+0] = 2 - (int32_t)((w >> 0)  & 7);
-            coeffs[8*i+1] = 2 - (int32_t)((w >> 3)  & 7);
-            coeffs[8*i+2] = 2 - (int32_t)((w >> 6)  & 7);
-            coeffs[8*i+3] = 2 - (int32_t)((w >> 9)  & 7);
-            coeffs[8*i+4] = 2 - (int32_t)((w >> 12) & 7);
-            coeffs[8*i+5] = 2 - (int32_t)((w >> 15) & 7);
-            coeffs[8*i+6] = 2 - (int32_t)((w >> 18) & 7);
-            coeffs[8*i+7] = 2 - (int32_t)((w >> 21) & 7);
+            // Caricamento esplicito di 3 byte per evitare sporcizia nel 4° byte
+            w  = (uint32_t)a[3*i+0];
+            w |= (uint32_t)a[3*i+1] << 8;
+            w |= (uint32_t)a[3*i+2] << 16;
+            for(int j=0; j<8; ++j) {
+                uint8_t extracted = (w >> (3*j)) & 7;
+                // ML-DSA-44: i coefficienti sono (eta - valore)
+                coeffs[8*i+j] = (int32_t)2 - (int32_t)extracted;
+
+                // Opzionale: Protezione contro dati corrotti
+                if (extracted > 4) {
+                    fprintf(stderr, "WARNING: eta-value %d is out of range [0,4]\n", extracted);
+                }
+            }
         }
     } else if (conf->eta == 4) {
         for(unsigned int i = 0; i < DIL_N/8; ++i) {

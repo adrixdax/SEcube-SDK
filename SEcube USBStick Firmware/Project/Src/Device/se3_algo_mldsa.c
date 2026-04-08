@@ -64,7 +64,7 @@ void mldsa_derive_keygen_seeds(const uint8_t zeta[32], uint8_t k, uint8_t l,
     shake256_squeeze(key, 32, &st);
 }
 
-static void mldsa_derive_sign_rhoprime(const uint8_t key[32], const uint8_t rnd[32],
+void mldsa_derive_sign_rhoprime(const uint8_t key[32], const uint8_t rnd[32],
                                        const uint8_t mu[64], uint8_t rhoprime[64]) {
     keccak_state st;
     shake256_init(&st);
@@ -75,7 +75,7 @@ static void mldsa_derive_sign_rhoprime(const uint8_t key[32], const uint8_t rnd[
     shake256_squeeze(rhoprime, 64, &st);
 }
 
-static uint16_t poly_challenge_fips(poly *c, const uint8_t *seed, const dilithium_conf_t *conf) {
+uint16_t poly_challenge_fips(poly *c, const uint8_t *seed, const dilithium_conf_t *conf) {
     unsigned int i, pos; uint64_t signs; uint8_t buf[8]; keccak_state state;
     shake256_init(&state); shake256_absorb(&state, seed, conf->ctildebytes);
     shake256_finalize(&state); shake256_squeeze(buf, 8, &state);
@@ -166,12 +166,18 @@ static uint16_t dilithium_sign_core(se3_dilithium_ctx* ctx, uint16_t flags, uint
     memcpy(key, active_sk + 32, 32);
     memcpy(tr,  active_sk + 64, 64);
 
+    // --- TRICK MEMORIA: Espandiamo la matrice A una volta sola ---
+    polyvecl mat[ctx->conf->k];
+    polyvec_matrix_expand(mat, rho, ctx->conf);
+
+    // Unpack s1 e portalo nel dominio NTT (vl1 diventerà s1_hat)
     for(unsigned int i=0; i < ctx->conf->l; i++) {
         polyeta_unpack(&shared_vl1.vec[i], active_sk + 128 + i * ctx->conf->polyeta_packed, ctx->conf);
-        poly_caddq(&shared_vl1.vec[i]); // FIX 2
+        poly_caddq(&shared_vl1.vec[i]);
         poly_ntt(&shared_vl1.vec[i]);
     }
 
+    // Hash del messaggio: mu = CRH(tr || msg)
     shake256_init(&ctx->shake_ctx);
     shake256_absorb(&ctx->shake_ctx, tr, 64);
     uint8_t domain_sep[2] = {0x00, 0x00};
@@ -185,17 +191,21 @@ static uint16_t dilithium_sign_core(se3_dilithium_ctx* ctx, uint16_t flags, uint
 
     while (nonce < 814) {
         polyvecl_uniform_gamma1(&shared_vl2, rhoprime, nonce++, ctx->conf);
+
+        // Portiamo y in NTT usando vk1 come appoggio
         for(unsigned int i=0; i < ctx->conf->l; i++) {
             shared_vk1.vec[i] = shared_vl2.vec[i];
             poly_ntt(&shared_vk1.vec[i]);
         }
 
-        //matrix_mult_streaming(&shared_vk2, rho, (polyvecl*)&shared_vk1, ctx->conf);
-        polyveck_invntt_tomont(&shared_vk2, ctx->conf);
+        // --- FIX: Moltiplicazione Pointwise A * y ---
+        polyvec_matrix_pointwise_montgomery(&shared_vk2, mat, (polyvecl*)&shared_vk1, ctx->conf);
 
+        polyveck_invntt_tomont(&shared_vk2, ctx->conf);
         polyveck_reduce(&shared_vk2, ctx->conf);
         polyveck_caddq(&shared_vk2, ctx->conf);
 
+        // Decomposizione w -> (w1, w0)
         polyveck w0_vec;
         for(unsigned int i=0; i < ctx->conf->k; i++) {
             poly_decompose(&shared_tmp_poly, &w0_vec.vec[i], &shared_vk2.vec[i], ctx->conf);
@@ -205,16 +215,19 @@ static uint16_t dilithium_sign_core(se3_dilithium_ctx* ctx, uint16_t flags, uint
             shared_vk2.vec[i] = w0_vec.vec[i];
         }
 
+        // Calcolo c_tilde
         shake256_init(&global_st);
         shake256_absorb(&global_st, mu, 64);
         shake256_absorb(&global_st, shared_pk_buf, ctx->conf->k * ctx->conf->polyw1_packed);
         shake256_finalize(&global_st);
         shake256_squeeze(c_tilde, ctx->conf->ctildebytes, &global_st);
 
+        // Generazione sfida c
         poly_challenge_fips(&shared_cp, c_tilde, ctx->conf);
-        poly_caddq(&shared_cp); // FIX 2
+        poly_caddq(&shared_cp);
         poly_ntt(&shared_cp);
 
+        // z = y + c*s1
         for(unsigned int i=0; i < ctx->conf->l; i++) {
             poly_pointwise_montgomery(&shared_tmp_poly, &shared_cp, &shared_vl1.vec[i]);
             poly_invntt_tomont(&shared_tmp_poly);
@@ -222,25 +235,23 @@ static uint16_t dilithium_sign_core(se3_dilithium_ctx* ctx, uint16_t flags, uint
             poly_reduce(&shared_vl2.vec[i]);
         }
 
-        if (polyvecl_chknorm(&shared_vl2, ctx->conf->gamma1 - ctx->conf->beta, ctx->conf)) {
-            continue;
-        }
+        // Rejection sampling su z
+        if (polyvecl_chknorm(&shared_vl2, ctx->conf->gamma1 - ctx->conf->beta, ctx->conf)) continue;
 
+        // Calcolo w - c*s2
         polyveck s2_vec;
         for(unsigned int i=0; i < ctx->conf->k; i++) {
             polyeta_unpack(&s2_vec.vec[i], active_sk + 128 + ctx->conf->l * ctx->conf->polyeta_packed + i * ctx->conf->polyeta_packed, ctx->conf);
             poly_ntt(&s2_vec.vec[i]);
             poly_pointwise_montgomery(&s2_vec.vec[i], &shared_cp, &s2_vec.vec[i]);
             poly_invntt_tomont(&s2_vec.vec[i]);
-
             poly_sub(&shared_vk2.vec[i], &shared_vk2.vec[i], &s2_vec.vec[i]);
             poly_reduce(&shared_vk2.vec[i]);
         }
 
-        if (polyveck_chknorm(&shared_vk2, ctx->conf->gamma2 - ctx->conf->beta, ctx->conf)) {
-            continue;
-        }
+        if (polyveck_chknorm(&shared_vk2, ctx->conf->gamma2 - ctx->conf->beta, ctx->conf)) continue;
 
+        // Controllo su t0
         polyveck t0_vec;
         for(unsigned int i=0; i < ctx->conf->k; i++) {
             polyt0_unpack(&t0_vec.vec[i], active_sk + 128 + (ctx->conf->l + ctx->conf->k) * ctx->conf->polyeta_packed + i * POLYT0_PACKEDBYTES);
@@ -249,16 +260,12 @@ static uint16_t dilithium_sign_core(se3_dilithium_ctx* ctx, uint16_t flags, uint
             poly_invntt_tomont(&t0_vec.vec[i]);
             poly_reduce(&t0_vec.vec[i]);
         }
+        if (polyveck_chknorm(&t0_vec, ctx->conf->gamma2, ctx->conf)) continue;
 
-        if (polyveck_chknorm(&t0_vec, ctx->conf->gamma2, ctx->conf)) {
-            continue;
-        }
-
+        // Hint e packing finale
         polyveck_add(&shared_vk2, &shared_vk2, &t0_vec, ctx->conf);
         unsigned int hints = polyveck_make_hint(&shared_vk1, &t0_vec, &shared_vk2, ctx->conf);
-        if (hints > ctx->conf->omega) {
-            continue;
-        }
+        if (hints > ctx->conf->omega) continue;
 
         pack_sig(o_out, c_tilde, &shared_vl2, &shared_vk1, ctx->conf);
         *o_l = ctx->conf->sig_bytes;
@@ -266,7 +273,7 @@ static uint16_t dilithium_sign_core(se3_dilithium_ctx* ctx, uint16_t flags, uint
     }
 
     o_out[0] = 0xCC; *o_l = 1;
-    return SE3_OK;
+    return SE3_ERR_PARAMS;
 }
 
 static uint16_t dilithium_verify_core(se3_dilithium_ctx* ctx, const uint8_t* msg, size_t msg_len,

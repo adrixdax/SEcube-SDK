@@ -291,6 +291,9 @@ const std::string OPENSSL_PRIV_RAW = R"(
     31:9d:1f:64:c5:9e:20:9e:35:82
 )";
 
+const std::string OPENSSL_EXPECTED_SIGNATURE = R"("
+c5010744d622a98299a0dc85497f707a07e8ad60e7707b7a8c77cff0411b8b51131819a0ff52d83ae6ad0376ae29b1239322d9dac86f2f7bfcfa08738615d14ff21749c604a1aea5aa8b50429fe4a0e3145cf38ea98ce4b7f19bcfeb7bd3f1c29dcccffbddc2e14842b4be359286d3fbce58197c7c1ec984b0d754118ef590a1318abedf2118f24ae1c5988158fbc3e1c30695b55c54993ed3108581a1ac571372415c53b9a8cb3e51a0c8677403890d7cd9d2851c629cfa750e249bd8a25441b47c1fd208967288b22526785eea8006c4e086c0202d9828576cd3b0efab435da3fbb17622649fa4ce0815970352999b48e0fb0011e55e843208502b53427fdc85f48f0239426da570ded3807fca1f9b97fdb868ec08dc80ad20f26ffa77d43ae2b5442ce7ed634f010aca0dd7b35874eb76253daf4522bf2dac08b8d2d68323c2c24adfa2772aa0d164f41d5fadf58a03ab115571e2f55acf18a8c936da6fe2997370bec38511b190033373561ee0122334c737ba17a214b0b5a76328b32e6ecc562a9fc1ccb084ccbdfbdadd86f71a938efcbc6225e350e1003b1951c26fcf6a6cb3b53d977028ca4501fbf8fe3259f71bc871814f9483f8ad25af147c07b03b58a0bd2883adfbdd56fa4ca7c0756ab0a942898aee746760cd1d6824b8a79277b81579cd2d1d24ee9ed8049fb0fbb3337f39eaf035763fb147d7cf5341ed7ed871472c9b3a2531b747e42bfc3b77a420550f2beb3f0afb6aecfb62e415c732b6046ac459db392bf053c4a2674602b63d47f8b9bc097bad63e119590c7de90a2422af1c46d8cbb886f4a8477a285986f54d885f6be68075fd283a379deb83555a6a9230684256226a495c3a07f7d320ec2fe259206aeab5f3fee3cc1fa8191e29f50e3f990c5d5e3f45c794bcc1b1b286d5360d008f8d7e57295f259dde8faef46e0a54752b97736ae36604a84849b854f85e43c5be8f693985d052710878551cca930960f1a77a181d9c4bc2906bfe694bd2ece62cb97afe8e9d1b9304532953bb44bcf3d0ce2e05df7a6d242bb52b2f867af9442cea043cb084d0d353070effab49a9368d3f6936f761dbe24e4b977012761a73f69af8194098336465734d3af5597eb23146d60e073395aff0dc26364359a2b903d9277259878f2c00b220c95d4453d5aebd7b87e1ae6b5d5e2939a734fcbb1be51641276265c48365b9ee7ff8ec5002f7521a6ac0b1b1e93810b1317949fb861d3cf8302765560d512ae9fef0dc18aad8fc48b7770c84d53c5a0de6cc28c2fbc3873d3d0bbd7e01512b135c599e539c9a2b7813687b5806fbba0109332a6357bbe2bb3a71fc8a00033bf0c0f7d20453acf15c495bb4e53db5acd211b90d9bb8d71b4fd88545b987d0a71adc5071ac0263d2205fb913c0932e51cb6b71929860c23792dd6fe4dab388dfc83ae12f7b514578419ccd78b88f844cba5ab538b1a55fed579592b54a920036b0f65d0cd2edc7102255562a08878a7514cb9dcb3ebda3956cbf45e3b7c8525c9835b1fab30cf512e7f4068583ec0d70c12fc66057a90d71603e49c56fdaaa2a721ba97c0654c5cebf9603fa73bc14e63ff62cca415cc30822c1a7f08d59002a915b1081c513772c248e9f7509d4436d3069adab7b8e1fbd3dd21470188979935b05a259f4ab5308d8e745dd0170a47f6e9fa8a4d3c9255f79c3cfb0b0f9d665a2ac823f35d05775e74ca32c2a1e32bd487ef367efdb18c5d908d0a68d44e3eaf79793a432f88861040337d41ba05221e056298b4954a4debe6265db7c8fd989b9f027f96a814081b63b89c631cc0a7c4d489e98bce744bb68a4078f2c2dbad7b90a0f530483656adc223c3a10ebc64e942ceca508fb0d51546d9ad0860a8e104b7d9d9d354cef19ced2d6fdba5adbef2c96c21a267add53dd477bc97d6f5c40c9b4f4ad173a63032aa8f36585eeafce3e5193bf5b0f4c58781c1fd1f60562fe022cd81a68d46d91ac313b807f8468dabd5d90ee75d31c22d2bc88319e1c8a23cac1c25c6306ecb55660d2670f187ab09605bb5b9a80eea564c0affe299e66f1ca05d2fa625a4ecdc21e725f8eaa112049603fb8effbbdffc00aa3101203409c2b101f9ce303e232d517db727a93769578a21013c8540fdb008da6683498d13c4a2099f9809abdf921a26ae6bfd1fbcc8e664c693631bd5796135e20489bebc6dda369f31a870f558166376b18ff7649945f8d5491a88a66096bc4688707640a3dbc51a65d1bb0fe7b4aa6d3e8fbfb758d412706d53a9a068b9e78aaa69c4e532b0588e4712ba8e5b9d3d06157eba110d9ddb34b537835408fc8af819e50544aa7bd8a0629bcec55c4945344797bf8ef118a37daa4172bc3e9e78441d3ca9245794001df08aca9f70b44a2cb563f3efd9c25ef67366b497976e22a36d315aae3b2617c2f833c33bbf0beea598bc3588b0994fdf2044d5a464179c295748f0a74ae51534a3b813091267bb02b4c3434e01ddc0dc73ba5e3a5e5ee7ff2795b8bd399e86cb3cc55e22f5e6bd6bdab9bbb9c5b3af642407e1e5a998bb4dba8a4712cbec6124e7dfb8752dd2b7fc757def3fb9a63b218d9ab644c5bdf6d505bc85d6273ea218e7588a4c2cb6c1927ac60ddb395699b761f5e9a302f10bf4c57acb4ade3e37c4c776d94e1d8d5d8a348dabd0a314058955e44e2112415152db51df45f62914bf2d3cef6fec592364542b1f3f3181b658418ae6b9cdeff08f6e4d705e2e3c6511155f5e81dedfb949925a7dc845861d5e7191452e45530876bae871b3b2d8e2f6c5a4187eeb8260f90e45ab344730e5ff2a79ce31eee909fe208f187eaebff276f78273a0cebeffbedc3d2430a281e48c7cb113a43bc8db5fde2775607c610615c841dd31c248d4470801e7668b78e34a381d4e78199cec7394e93761cc50dfb3ae028f3c916634e172fdee6a99debd2a58d5d01275929033c9c21518a11a7a868237f1d15334483300593ed02286f97efb16d06a9cbb541074cc8e4271d8b32033efb7e615151fc8b43dc49644fe68b395f170e86bcf6700ac37a7b17b68d68a3a7e8314cf4262734db9a36106458b5038dfa83dfb9e2b44f17a8f7732a219fc35e66442696b49d7f3b8accda4ca3ca2493a98b5d5bb10ec23d662660155da457c8891a07a81a7277e97502da627b7628185c871547ed5f043b0161abc85feccfe3f82aa2dc8880ff7a25ea88ab02ffe66e70e05fa67c84afd6f010ab4973d3fe0531a96ea588030a5ba4fda104ceb111a0c832d8b23d3a0725838a39a60e1317283047484a68728599a2adc9ccd0d8e3e8edf1f2f4f7f90e4c707a7b7f959bd3dcf7252a397bbbcef51754617186a8c700000000000000000000000000000000000000000000000000000000001a252c33
+)";
 
 // ---------------------------------------------------------------------------
 // COSTANTI
@@ -519,7 +522,7 @@ static void check_invntt_f_value() {
 // ---------------------------------------------------------------------------
 // MAIN TEST
 // ---------------------------------------------------------------------------
-int main() {
+int keygenComparisonTest() {
     const dilithium_conf_t* conf = &SE3_DILITHIUM_L2;
     uint8_t zeta[32] = {0}; // Seme forzato a zero per KAT
     uint8_t rho[32], rhoprime[64], key_seed[32];
@@ -811,4 +814,229 @@ int main() {
     std::cout << "\n" << std::string(80, '=') << std::endl;
 
     return all_ok ? 0 : -1;
+}
+
+#include <iostream>
+#include <vector>
+#include <cstring>
+
+extern "C" {
+    #include "se3_algo_mldsa.h"
+    #include "se3_algo_mldsa_params.h"
+    #include "se3_arith_polyvec.h"
+    #include "se3_arith_ntt.h"
+    #include "se3_arith_packing.h"
+    #include "shake.h"
+}
+
+// ---------------------------------------------------------------------------
+// SIMULAZIONE DELLA FIRMA HSM (hostSideTest.cpp)
+// ---------------------------------------------------------------------------
+int simulate_hsm_sign_core_diagnostics(const uint8_t* sk, const uint8_t* msg, size_t msg_len, uint8_t* out_sig) {
+    const dilithium_conf_t* conf = &SE3_DILITHIUM_L2;
+
+    uint8_t rho[32], tr[64], key[32], mu[64], rhoprime[64], c_tilde[64];
+    uint16_t nonce = 0;
+
+    memcpy(rho, sk + 0,  32);
+    memcpy(key, sk + 32, 32);
+    memcpy(tr,  sk + 64, 64);
+
+
+
+    polyvecl mat[4]; // k=4 per ML-DSA-44
+    polyvec_matrix_expand(mat, rho, conf);
+
+// ========================================================================
+    // 1. ESTRAZIONE E VERIFICA s1 (skDecode)
+    // ========================================================================
+    std::cout << "\n[DEBUG] Verifica integrita' spacchettamento SK (skDecode)..." << std::endl;
+    bool unpack_error = false;
+
+    polyvecl s1_hat;
+    for(unsigned int i = 0; i < conf->l; i++) {
+        polyeta_unpack(&s1_hat.vec[i], sk + 128 + i * conf->polyeta_packed, conf);
+
+        // --- DIAGNOSTICA ---
+        // Per ML-DSA-44, eta = 2. I coefficienti DEVONO essere tra -2 e 2.
+        for(int j = 0; j < 256; j++) {
+            int32_t val = s1_hat.vec[i].coeffs[j];
+            if(val < -conf->eta || val > conf->eta) {
+                std::cout << "  [!] ERRORE FATALE UNPACK s1: coeff[" << j << "] del polinomio " << i
+                          << " vale " << val << " (dovrebbe essere in [-" << conf->eta << ", " << conf->eta << "])" << std::endl;
+                unpack_error = true;
+                break;
+            }
+        }
+
+        poly_caddq(&s1_hat.vec[i]);
+        poly_ntt(&s1_hat.vec[i]);
+    }
+
+    // ========================================================================
+    // 2. ESTRAZIONE E VERIFICA s2 e t0 (skDecode)
+    // ========================================================================
+    polyveck s2_base, t0_base;
+    for(unsigned int i = 0; i < conf->k; i++) {
+        // Unpack s2
+        polyeta_unpack(&s2_base.vec[i], sk + 128 + conf->l * conf->polyeta_packed + i * conf->polyeta_packed, conf);
+
+        // --- DIAGNOSTICA ---
+        for(int j = 0; j < 256; j++) {
+            int32_t val = s2_base.vec[i].coeffs[j];
+            if(val < -conf->eta || val > conf->eta) {
+                std::cout << "  [!] ERRORE FATALE UNPACK s2: coeff[" << j << "] del polinomio " << i
+                          << " vale " << val << " (dovrebbe essere in [-" << conf->eta << ", " << conf->eta << "])" << std::endl;
+                unpack_error = true;
+                break;
+            }
+        }
+
+        poly_caddq(&s2_base.vec[i]);
+        poly_ntt(&s2_base.vec[i]);
+
+        // Unpack t0
+        // L'offset per t0 e': 32(rho) + 32(K) + 64(tr) = 128
+        // + s1 (l * eta_packed) + s2 (k * eta_packed)
+        int t0_offset = 128 + (conf->l + conf->k) * conf->polyeta_packed + i * 416; // 416 = POLYT0_PACKEDBYTES
+        polyt0_unpack(&t0_base.vec[i], sk + t0_offset);
+
+        // t0 vive in [-2^12, 2^12] = [-4096, 4096] circa (D dipende dal livello)
+        // Se vedi numeri di milioni, l'offset o il packing sono sbagliati.
+        for(int j = 0; j < 256; j++) {
+            int32_t val = t0_base.vec[i].coeffs[j];
+            if(val < -8192 || val > 8192) { // Limite di sicurezza largo per il check
+                std::cout << "  [!] SOSPETTO ERRORE UNPACK t0: coeff esageratamente alto -> " << val << std::endl;
+            }
+        }
+
+        poly_caddq(&t0_base.vec[i]);
+        poly_ntt(&t0_base.vec[i]);
+    }
+
+    if (unpack_error) {
+        std::cerr << "[-] ABORTO: La Secret Key e' stata spacchettata male. Gli offset di memoria o la funzione polyeta_unpack sono rotti." << std::endl;
+        return -1;
+    } else {
+        std::cout << "  [✓] Spacchettamento s1 e s2 perfetto (tutti i valori in range)." << std::endl;
+    }
+
+    // Hash del messaggio
+    keccak_state shake_ctx;
+    shake256_init(&shake_ctx);
+    shake256_absorb(&shake_ctx, tr, 64);
+    uint8_t domain_sep[2] = {0x00, 0x00};
+    shake256_absorb(&shake_ctx, domain_sep, 2);
+    shake256_absorb(&shake_ctx, msg, msg_len);
+    shake256_finalize(&shake_ctx);
+    shake256_squeeze(mu, 64, &shake_ctx);
+
+    uint8_t zero_rnd[32] = {0};
+    mldsa_derive_sign_rhoprime(key, zero_rnd, mu, rhoprime);
+
+    polyvecl y, y_hat;
+    polyveck w, w0_vec;
+    poly c_hat, tmp_poly;
+    uint8_t pk_buf[4 * 192];
+
+    // --- CONTATORI DIAGNOSTICI ---
+    int rej_z = 0, rej_w = 0, rej_t0 = 0, rej_hints = 0;
+
+    while (nonce < 814) {
+        polyvecl_uniform_gamma1(&y, rhoprime, nonce++, conf);
+
+        for(unsigned int i = 0; i < conf->l; i++) {
+            y_hat.vec[i] = y.vec[i];
+            poly_caddq(&y_hat.vec[i]); // y ha coefficienti negativi, proteggiamo la NTT!
+            poly_ntt(&y_hat.vec[i]);
+        }
+
+        polyvec_matrix_pointwise_montgomery(&w, mat, &y_hat, conf);
+        polyveck_invntt_tomont(&w, conf);
+        polyveck_reduce(&w, conf);
+        polyveck_caddq(&w, conf);
+
+        for(unsigned int i = 0; i < conf->k; i++) {
+            poly_decompose(&tmp_poly, &w0_vec.vec[i], &w.vec[i], conf);
+            polyw1_pack(pk_buf + i * conf->polyw1_packed, &tmp_poly, conf);
+            w.vec[i] = w0_vec.vec[i];
+        }
+
+        keccak_state global_st;
+        shake256_init(&global_st);
+        shake256_absorb(&global_st, mu, 64);
+        shake256_absorb(&global_st, pk_buf, conf->k * conf->polyw1_packed);
+        shake256_finalize(&global_st);
+        shake256_squeeze(c_tilde, conf->ctildebytes, &global_st);
+
+        poly_challenge_fips(&c_hat, c_tilde, conf);
+        poly_caddq(&c_hat);
+        poly_ntt(&c_hat);
+
+        // Calcolo z = y + c*s1
+        for(unsigned int i = 0; i < conf->l; i++) {
+            poly_pointwise_montgomery(&tmp_poly, &c_hat, &s1_hat.vec[i]);
+            poly_invntt_tomont(&tmp_poly);
+            poly_add(&y.vec[i], &y.vec[i], &tmp_poly); // y diventa z
+            poly_reduce(&y.vec[i]);
+        }
+
+        if (polyvecl_chknorm(&y, conf->gamma1 - conf->beta, conf)) { rej_z++; continue; }
+
+        // Calcolo w = w0 - c*s2
+        polyveck s2_vec = s2_base; // Facciamo una copia locale pulita
+        for(unsigned int i = 0; i < conf->k; i++) {
+            poly_pointwise_montgomery(&s2_vec.vec[i], &c_hat, &s2_vec.vec[i]);
+            poly_invntt_tomont(&s2_vec.vec[i]);
+            poly_sub(&w.vec[i], &w.vec[i], &s2_vec.vec[i]);
+            poly_reduce(&w.vec[i]);
+        }
+
+        if (polyveck_chknorm(&w, conf->gamma2 - conf->beta, conf)) { rej_w++; continue; }
+
+        // Calcolo c*t0
+        polyveck t0_vec = t0_base; // Facciamo una copia locale pulita
+        for(unsigned int i = 0; i < conf->k; i++) {
+            poly_pointwise_montgomery(&t0_vec.vec[i], &c_hat, &t0_vec.vec[i]);
+            poly_invntt_tomont(&t0_vec.vec[i]);
+            poly_reduce(&t0_vec.vec[i]);
+        }
+
+        if (polyveck_chknorm(&t0_vec, conf->gamma2, conf)) { rej_t0++; continue; }
+
+        // Hints
+        polyveck_add(&w, &w, &t0_vec, conf);
+        polyveck h_vec;
+        unsigned int hints = polyveck_make_hint(&h_vec, &t0_vec, &w, conf);
+
+        if (hints > conf->omega) { rej_hints++; continue; }
+
+        pack_sig(out_sig, c_tilde, &y, &h_vec, conf);
+
+        std::cout << "[✓] Firma generata! Nonce: " << (nonce - 1) << std::endl;
+        std::cout << "  Scarti statistici -> z: " << rej_z << " | w: " << rej_w << " | t0: " << rej_t0 << " | hints: " << rej_hints << std::endl;
+        return 0;
+    }
+
+    std::cerr << "[-] Rejection sampling fallito dopo 814 tentativi." << std::endl;
+    std::cout << "  Analisi blocchi -> z: " << rej_z << " | w: " << rej_w << " | t0: " << rej_t0 << " | hints: " << rej_hints << std::endl;
+    return -1;
+}
+int main() {
+    // 1. Esegue il test della KeyGen
+    if (keygenComparisonTest() != 0) {
+        std::cerr << "[-] KeyGen fallita." << std::endl;
+        return -1;
+    }
+
+    // 2. Prepara i vettori dai dati OpenSSL (stringhe Hex)
+    std::vector<uint8_t> sk_vec  = parse_openssl_hex(OPENSSL_PRIV_RAW);
+    std::vector<uint8_t> pk_vec  = parse_openssl_hex(OPENSSL_PUB_RAW);
+    std::vector<uint8_t> sig_vec = parse_openssl_hex(OPENSSL_EXPECTED_SIGNATURE);
+
+    // 3. Esegue il test standard di Firma e Auto-Verifica
+    //signatureComparisonTest(sk_vec, pk_vec);
+    const char* msg = "Test Message";
+    simulate_hsm_sign_core_diagnostics(pk_vec.data(),  (const uint8_t*)msg, 12, sig_vec.data());
+    return 0;
 }

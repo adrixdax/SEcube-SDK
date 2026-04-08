@@ -1,10 +1,14 @@
-#include "se3_algo_mldsa_params.h"
 #include "se3_arith_ntt.h"
-#include "se3_arith_reduce.h"
 #include <stdint.h>
 
-/* --- ZETAS (IDENTICHE A OPENSSL) --- */
-static const int64_t zetas[256] = {
+#define ML_DSA_NUM_POLY_COEFFICIENTS 256
+#define ML_DSA_Q 8380417
+
+// IL VERO EROE DEL FIX: 4294967296 - 58728449
+#define ML_DSA_Q_NEG_INV 4236238847U
+
+/* Tabella a 32 bit per risparmiare 1KB di CCRAM/ROM */
+static const uint32_t zetas_montgomery[256] = {
     4193792, 25847, 5771523, 7861508, 237124, 7602457, 7504169, 466468,
     1826347, 2353451, 8021166, 6288512, 3119733, 5495562, 3111497, 2680103,
     2725464, 1024112, 7300517, 3585928, 7830929, 7260833, 2619752, 6271868,
@@ -38,87 +42,88 @@ static const int64_t zetas[256] = {
     5441381, 6144432, 7959518, 6094090, 183443, 7403526, 1612842, 4834730,
     7826001, 3919660, 8332111, 7018208, 3937738, 1400424, 7534263, 1976782
 };
-static inline int64_t mod_add(int64_t a, int64_t b) {
-    int64_t r = a + b;
-    if (r >= DIL_Q) r -= DIL_Q;
-    return r;
+
+/* --- Operazioni Matematiche Sicure (0 <= res < Q) --- */
+
+static inline uint32_t reduce_montgomery(uint64_t a) {
+    uint64_t t = (uint32_t)a * ML_DSA_Q_NEG_INV;
+    uint64_t b = a + t * ML_DSA_Q;
+    uint32_t c = (uint32_t)(b >> 32);
+    return (c >= ML_DSA_Q) ? (c - ML_DSA_Q) : c;
 }
 
-static inline int64_t mod_sub(int64_t a, int64_t b) {
-    int64_t r = a - b;
-    if (r < 0) r += DIL_Q;
-    return r;
+static inline uint32_t mod_add(uint32_t a, uint32_t b) {
+    uint32_t c = a + b;
+    return (c >= ML_DSA_Q) ? (c - ML_DSA_Q) : c;
 }
 
-static inline int64_t mod_mul(int64_t a, int64_t b) {
-    return (a * b) % DIL_Q;
+static inline uint32_t mod_sub(uint32_t a, uint32_t b) {
+    return (a >= b) ? (a - b) : (a + ML_DSA_Q - b);
 }
 
-uint64_t modpow(uint64_t base, uint64_t exp, uint64_t mod) {
-    uint64_t res = 1;
-    base %= mod;
-    while (exp > 0) {
-        if (exp & 1) res = (res * base) % mod;
-        base = (base * base) % mod;
-        exp >>= 1;
+/* --- NTT e INTT --- */
+
+void ntt(int32_t p[ML_DSA_NUM_POLY_COEFFICIENTS]) {
+    uint32_t* up = (uint32_t*)p;
+    int i, j, k, step;
+    int offset = ML_DSA_NUM_POLY_COEFFICIENTS;
+
+    // Sanitizzazione: Mappa da -Q a 0 in [0, Q-1]
+    for (i = 0; i < ML_DSA_NUM_POLY_COEFFICIENTS; i++) {
+        int32_t a = p[i];
+        a += (a >> 31) & ML_DSA_Q;
+        up[i] = (uint32_t)a;
     }
-    return res;
-}
 
-void bitrev(int32_t *a) {
-    uint64_t tmp[DIL_N];
-    int logN = 0, n = DIL_N;
-    while (n >>= 1) logN++;
-    for (int i = 0; i < DIL_N; i++) {
-        int rev = 0;
-        int x = i;
-        for (int j = 0; j < logN; j++) {
-            rev = (rev << 1) | (x & 1);
-            x >>= 1;
-        }
-        tmp[rev] = a[i];
-    }
-    for (int i = 0; i < DIL_N; i++) a[i] = tmp[i];
-}
+    for (step = 1; step < ML_DSA_NUM_POLY_COEFFICIENTS; step <<= 1) {
+        k = 0;
+        offset >>= 1;
+        for (i = 0; i < step; i++) {
+            const uint32_t z_step_root = zetas_montgomery[step + i];
 
-// --- Forward NTT (Cooley-Tukey) ---
-void ntt(int32_t *a) {
-    unsigned int len, start, j, k = 1;
-    int32_t t, zeta;
-    for (len = 128; len >= 1; len >>= 1) {
-        for (start = 0; start < 256; start += 2 * len) {
-            zeta = (int32_t)zetas[k++];
-            for (j = start; j < start + len; ++j) {
-                t = (zeta * a[j + len])%DIL_Q;
-                a[j + len] = (a[j] - t)%DIL_Q;
-                a[j] = (a[j] + t)%DIL_Q;
+            for (j = k; j < k + offset; j++) {
+                uint32_t w_even = up[j];
+                uint32_t t_odd = reduce_montgomery((uint64_t)z_step_root * up[j + offset]);
+
+                up[j] = mod_add(w_even, t_odd);
+                up[j + offset] = mod_sub(w_even, t_odd);
             }
+            k += 2 * offset;
         }
     }
 }
 
-void invntt_tomont(int32_t *w) {
-    int m = 256;
-    int len = 1;
+void invntt_tomont(int32_t p[ML_DSA_NUM_POLY_COEFFICIENTS]) {
+    uint32_t* up = (uint32_t*)p;
+    int i, j, k, offset;
+    int step = ML_DSA_NUM_POLY_COEFFICIENTS;
+    static const uint32_t inverse_degree_montgomery = 41978;
 
-    // Righe 6-20 dello pseudocodice
-    while (len < 256) {
-        int start = 0;
-        while (start < 256) {
-            m = m - 1;
-            int64_t z = - zetas[m];
-            for (int j = start; j < start + len; j++) {
-                int32_t t = w[j];
-                w[j] = (t + w[j + len]) % DIL_Q;
-                w[j+len] = (t - w[j + len])%DIL_Q;
-                w[j+len] = (z*w[j+len])%DIL_Q;
-            }
-            start = start + 2 * len;
-        }
-        len = 2 * len;
+    // Sanitizzazione
+    for (i = 0; i < ML_DSA_NUM_POLY_COEFFICIENTS; i++) {
+        int32_t a = p[i];
+        a += (a >> 31) & ML_DSA_Q;
+        up[i] = (uint32_t)a;
     }
-    const int64_t f = 8347681;
-    for (int j = 0; j < 256; j++) {
-        w[j] = (f*w[j])%DIL_Q;
+
+    for (offset = 1; offset < ML_DSA_NUM_POLY_COEFFICIENTS; offset <<= 1) {
+        step >>= 1;
+        k = 0;
+        for (i = 0; i < step; i++) {
+            const uint32_t step_root = ML_DSA_Q - zetas_montgomery[step + (step - 1 - i)];
+
+            for (j = k; j < k + offset; j++) {
+                uint32_t even = up[j];
+                uint32_t odd = up[j + offset];
+
+                up[j] = mod_add(odd, even);
+                up[j + offset] = reduce_montgomery((uint64_t)step_root * mod_sub(even, odd));
+            }
+            k += 2 * offset;
+        }
+    }
+
+    for (i = 0; i < ML_DSA_NUM_POLY_COEFFICIENTS; i++) {
+        up[i] = reduce_montgomery((uint64_t)up[i] * inverse_degree_montgomery);
     }
 }

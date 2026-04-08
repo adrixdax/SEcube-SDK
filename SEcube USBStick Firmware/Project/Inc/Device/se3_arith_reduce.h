@@ -16,10 +16,23 @@
  * essere identico. Se in futuro si unifica, usare questa.
  */
 static inline int32_t montgomery_reduce(int64_t a) {
+    int64_t t;
+    int32_t u;
+
+    u = (int32_t)a * 62209;
+    t = (int64_t)u * DIL_Q;
+    t = a - t;
+    t >>= 32;
+
+    return (int32_t)t;
+}
+
+static inline int32_t barrett_reduce(int32_t a) {
     int32_t t;
-    t = (int32_t)a * DIL_QINV;
-    t = (a - (int64_t)t * DIL_Q) >> 32;
-    return t;
+    const int32_t v = ((1 << 26) + DIL_Q/2) / DIL_Q;
+    t = ((int64_t)v * a + (1 << 25)) >> 26;
+    t *= DIL_Q;
+    return a - t;
 }
 
 /* Riduzione a 32-bit (sfrutta istruzione MLS del Cortex-M4) */
@@ -64,15 +77,10 @@ static inline uint32_t constant_time_select_int(uint32_t mask, uint32_t a, uint3
 
 /* --- Rounding di un singolo coefficiente --- */
 static uint32_t power2round(int32_t *a0, int32_t a) {
-    int32_t mask_q = a >> 31;
-    uint32_t ur = (uint32_t)(a + (mask_q & 8380417));
-    uint32_t a1 = ur >> 13;
-    uint32_t a0_val = ur - (a1 << 13);
-    uint32_t round_mask = (uint32_t)((int32_t)(4096 - a0_val) >> 31);
-    uint32_t a1_res = a1 + (round_mask & 1);
-    int32_t a0_res = (int32_t)(a0_val - (round_mask & 8192));
-    *a0 = a0_res;
-    return a1_res;
+    int32_t a1;
+    a1 = (a + (1 << (DIL_D-1))) >> DIL_D;
+    *a0 = a - (a1 << DIL_D);
+    return a1;
 }
 
 /* =========================================================================

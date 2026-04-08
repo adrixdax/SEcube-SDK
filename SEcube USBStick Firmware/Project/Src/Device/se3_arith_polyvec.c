@@ -73,9 +73,17 @@ void polyvecl_pointwise_acc_montgomery(poly *w, const polyvecl *u, const polyvec
     for(i = 0; i < DIL_N; ++i) {
         int64_t t = 0;
         for(j = 0; j < conf->l; ++j) {
-            // montgomery_reduce su ogni prodotto, non sull'accumulato
             t += internal_montgomery_reduce((int64_t)u->vec[j].coeffs[i] * v->vec[j].coeffs[i]);
         }
+
+        // --- INIZIO FIX ---
+        // Riduzione modulare assoluta: blocca l'accumulo fuori range!
+        t %= DIL_Q;
+        if (t < 0) {
+            t += DIL_Q;
+        }
+        // --- FINE FIX ---
+
         w->coeffs[i] = (int32_t)t;
     }
 }
@@ -212,12 +220,11 @@ void polyveck_pack_w1(uint8_t *r, const polyveck *w1, const dilithium_conf_t *co
 /* ========================================================================== */
 /* Operazioni sulle Matrici (ExpandA & Moltiplicazione)                       */
 /* ========================================================================== */
-
 void polyvec_matrix_expand(polyvecl mat[DIL_K_MAX], const uint8_t rho[DIL_SEEDBYTES], const dilithium_conf_t *conf) {
-    unsigned int r, s; // Uso i nomi del NIST per non sbagliare
+    unsigned int r, s;
     for(r = 0; r < conf->k; ++r) {
         for(s = 0; s < conf->l; ++s) {
-            uint16_t nonce = (uint16_t)((s << 8) | r);
+            uint16_t nonce = (uint16_t)((r << 8) | s);
             poly_uniform(&mat[r].vec[s], rho, nonce);
         }
     }

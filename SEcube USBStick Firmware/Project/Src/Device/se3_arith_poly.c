@@ -1,11 +1,14 @@
+#include <stdio.h>
 #include <stdint.h>
 #include <string.h>
 
 #include "se3_arith_poly.h"
+
 #include "se3_arith_reduce.h"
 #include "se3_algo_shake.h"
 #include "se3_algo_mldsa_symmetric.h"
 #include "Keccak.h"
+
 
 
 static inline uint32_t ct_lt(uint32_t a, uint32_t b) {
@@ -207,17 +210,17 @@ void polyeta_unpack(poly *r, const uint8_t *a, const dilithium_conf_t *conf) {
 // In se3_arith_poly.c
 void polyt1_pack(uint8_t *r, const poly *a) {
     for(unsigned int i = 0; i < DIL_N/4; ++i) {
-        // Forza i coefficienti a 10 bit (0x3FF)
+
         uint32_t t0 = (uint32_t)a->coeffs[4*i+0] & 0x3FF;
         uint32_t t1 = (uint32_t)a->coeffs[4*i+1] & 0x3FF;
         uint32_t t2 = (uint32_t)a->coeffs[4*i+2] & 0x3FF;
         uint32_t t3 = (uint32_t)a->coeffs[4*i+3] & 0x3FF;
 
-        r[5*i+0] = (t0 >> 0);
-        r[5*i+1] = (t0 >> 8) | (t1 << 2);
-        r[5*i+2] = (t1 >> 6) | (t2 << 4);
-        r[5*i+3] = (t2 >> 4) | (t3 << 6);
-        r[5*i+4] = (t3 >> 2);
+        r[5*i+0] = (t0 >> 0) & 0xFF;
+        r[5*i+1] = ((t0 >> 8) | (t1 << 2)) & 0xFF;
+        r[5*i+2] = ((t1 >> 6) | (t2 << 4)) & 0xFF;
+        r[5*i+3] = ((t2 >> 4) | (t3 << 6)) & 0xFF;
+        r[5*i+4] = (t3 >> 2) & 0xFF;
     }
 }
 
@@ -329,28 +332,21 @@ unsigned int rej_eta(int32_t *a, unsigned int len, const uint8_t *buf, unsigned 
     return ctr;
 }
 
-unsigned int rej_uniform(int32_t *a, unsigned int len,
-                            const uint8_t *buf, unsigned int buflen) {
+unsigned int rej_uniform(int32_t *a, unsigned int len, const uint8_t *buf, unsigned int buflen) {
     unsigned int ctr = 0;
     unsigned int pos = 0;
 
     while (pos + 2 < buflen && ctr < len) {
         uint8_t b0 = buf[pos];
         uint8_t b1 = buf[pos+1];
-        uint8_t b2 = buf[pos+2];
-        // azzera il top bit di b2 senza branch
-        uint8_t mask_top = (b2 >> 7);      // 1 se b2 >= 128
-        b2 = b2 - (mask_top << 7);         // sottrai 128 se necessario
+        uint8_t b2 = buf[pos+2] & 0x7F; // Cleanly zeroes the top bit
+
         uint32_t t = ((uint32_t)b2 << 16) | ((uint32_t)b1 << 8) | b0;
-        // maschera costante: 0xFFFFFFFF se t < DIL_Q, 0x0 altrimenti
-        uint32_t m = (t - DIL_Q) >> 31;   // m = 1 se t < DIL_Q
-        m = -m;                           // m = 0xFFFFFFFF se t < DIL_Q, 0 altrimenti
-        // aggiorna l’array in modo costante usando la maschera
-        if (ctr < len) {                  // indice array fisso, ma si può rendere ancora più costante
-            a[ctr] = (t & m) | (a[ctr] & ~m);
+
+        if (t < DIL_Q) {
+            a[ctr] = t;
+            ctr++;
         }
-        // incrementa ctr in costante tempo usando maschera
-        ctr += m & 1;                      // se t < DIL_Q incrementa, altrimenti no
         pos += 3;
     }
     return ctr;
@@ -376,7 +372,7 @@ void poly_uniform(poly *a, const uint8_t seed[DIL_SEEDBYTES], uint16_t nonce) {
 
     ctr = rej_uniform(a->coeffs, DIL_N, buf, sizeof(buf));
     while (ctr < DIL_N) {
-        uint8_t extra_buf[DIL_STREAM128_BLOCKBYTES];
+        uint8_t extra_buf[3*DIL_STREAM128_BLOCKBYTES];
         shake128_squeezeblocks(extra_buf, 3, &state);
         ctr += rej_uniform(a->coeffs + ctr, DIL_N - ctr, extra_buf, sizeof(extra_buf));
     }
@@ -455,10 +451,12 @@ __attribute__((optimize("O3")))
 void poly_caddq(poly *a) {
     for(unsigned int i = 0; i < DIL_N; i++) {
         int32_t x = a->coeffs[i];
-        int32_t mask1 = x >> 31;
-        x += (mask1 & DIL_Q);
-        int32_t mask2 = x >> 31;
-        x += (mask2 & DIL_Q);
+        // 1. Risolve eventuali numeri negativi (es. se s2 era -2)
+        x += (x >> 31) & DIL_Q;
+        // 2. Tira giù tutto di Q per risolvere gli overflow (es. Q+1 diventa 1)
+        x -= DIL_Q;
+        // 3. Se il numero era già giusto, il passaggio 2 lo ha reso negativo. Lo riportiamo su.
+        x += (x >> 31) & DIL_Q;
         a->coeffs[i] = x;
     }
 }

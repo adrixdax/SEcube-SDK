@@ -19,8 +19,11 @@
 /* ============================================================================
  * 1. WORKSPACE OTTIMIZZATO (CCRAM)
  * ============================================================================ */
-#define USE_CCRAM_SECTION __attribute__((section(".ccram")))
-
+#ifdef SIMULAZIONE_PC
+    #define USE_CCRAM_SECTION
+#else
+    #define USE_CCRAM_SECTION __attribute__((section(".ccram")))
+#endif
 static USE_CCRAM_SECTION polyvecl shared_vl1;
 static USE_CCRAM_SECTION polyvecl shared_vl2;
 static USE_CCRAM_SECTION polyveck shared_vk1;

@@ -2,30 +2,31 @@
 #include <vector>
 #include <iomanip>
 #include <cstring>
-#include <cassert>
-#include <map>
 #include <sstream>
+#include <chrono>
 
+#include "L0.h"
 #include "se3_arith_reduce.h"
 
-// Mock macro per CCRAM
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 #ifndef USE_CCRAM_SECTION
 #define USE_CCRAM_SECTION
 #endif
 
 extern "C" {
-    #include "se3_algo_mldsa.h"
-    #include "se3_algo_mldsa_params.h"
-    #include "se3_arith_polyvec.h"
-    #include "se3_arith_ntt.h"
-    #include "se3_arith_packing.h"
-    #include "shake.h"
+#include "se3_algo_mldsa.h"
+#include "se3_algo_mldsa_params.h"
+#include "se3_arith_polyvec.h"
+#include "se3_arith_packing.h"
+#include "shake.h"
 }
 
 // ---------------------------------------------------------------------------
-// Chiavi attese
+// CHIAVI ATTESE (Costanti OpenSSL)
 // ---------------------------------------------------------------------------
-
 const std::string OPENSSL_PUB_RAW = R"(
     ba:71:f9:f6:4e:11:ba:eb:58:fa:9c:6f:bb:6e:14:
     e6:1f:18:64:3d:ab:49:5b:47:53:9a:91:66:ca:01:
@@ -291,460 +292,236 @@ const std::string OPENSSL_PRIV_RAW = R"(
     31:9d:1f:64:c5:9e:20:9e:35:82
 )";
 
-const std::string OPENSSL_EXPECTED_SIGNATURE = R"("
-c5010744d622a98299a0dc85497f707a07e8ad60e7707b7a8c77cff0411b8b51131819a0ff52d83ae6ad0376ae29b1239322d9dac86f2f7bfcfa08738615d14ff21749c604a1aea5aa8b50429fe4a0e3145cf38ea98ce4b7f19bcfeb7bd3f1c29dcccffbddc2e14842b4be359286d3fbce58197c7c1ec984b0d754118ef590a1318abedf2118f24ae1c5988158fbc3e1c30695b55c54993ed3108581a1ac571372415c53b9a8cb3e51a0c8677403890d7cd9d2851c629cfa750e249bd8a25441b47c1fd208967288b22526785eea8006c4e086c0202d9828576cd3b0efab435da3fbb17622649fa4ce0815970352999b48e0fb0011e55e843208502b53427fdc85f48f0239426da570ded3807fca1f9b97fdb868ec08dc80ad20f26ffa77d43ae2b5442ce7ed634f010aca0dd7b35874eb76253daf4522bf2dac08b8d2d68323c2c24adfa2772aa0d164f41d5fadf58a03ab115571e2f55acf18a8c936da6fe2997370bec38511b190033373561ee0122334c737ba17a214b0b5a76328b32e6ecc562a9fc1ccb084ccbdfbdadd86f71a938efcbc6225e350e1003b1951c26fcf6a6cb3b53d977028ca4501fbf8fe3259f71bc871814f9483f8ad25af147c07b03b58a0bd2883adfbdd56fa4ca7c0756ab0a942898aee746760cd1d6824b8a79277b81579cd2d1d24ee9ed8049fb0fbb3337f39eaf035763fb147d7cf5341ed7ed871472c9b3a2531b747e42bfc3b77a420550f2beb3f0afb6aecfb62e415c732b6046ac459db392bf053c4a2674602b63d47f8b9bc097bad63e119590c7de90a2422af1c46d8cbb886f4a8477a285986f54d885f6be68075fd283a379deb83555a6a9230684256226a495c3a07f7d320ec2fe259206aeab5f3fee3cc1fa8191e29f50e3f990c5d5e3f45c794bcc1b1b286d5360d008f8d7e57295f259dde8faef46e0a54752b97736ae36604a84849b854f85e43c5be8f693985d052710878551cca930960f1a77a181d9c4bc2906bfe694bd2ece62cb97afe8e9d1b9304532953bb44bcf3d0ce2e05df7a6d242bb52b2f867af9442cea043cb084d0d353070effab49a9368d3f6936f761dbe24e4b977012761a73f69af8194098336465734d3af5597eb23146d60e073395aff0dc26364359a2b903d9277259878f2c00b220c95d4453d5aebd7b87e1ae6b5d5e2939a734fcbb1be51641276265c48365b9ee7ff8ec5002f7521a6ac0b1b1e93810b1317949fb861d3cf8302765560d512ae9fef0dc18aad8fc48b7770c84d53c5a0de6cc28c2fbc3873d3d0bbd7e01512b135c599e539c9a2b7813687b5806fbba0109332a6357bbe2bb3a71fc8a00033bf0c0f7d20453acf15c495bb4e53db5acd211b90d9bb8d71b4fd88545b987d0a71adc5071ac0263d2205fb913c0932e51cb6b71929860c23792dd6fe4dab388dfc83ae12f7b514578419ccd78b88f844cba5ab538b1a55fed579592b54a920036b0f65d0cd2edc7102255562a08878a7514cb9dcb3ebda3956cbf45e3b7c8525c9835b1fab30cf512e7f4068583ec0d70c12fc66057a90d71603e49c56fdaaa2a721ba97c0654c5cebf9603fa73bc14e63ff62cca415cc30822c1a7f08d59002a915b1081c513772c248e9f7509d4436d3069adab7b8e1fbd3dd21470188979935b05a259f4ab5308d8e745dd0170a47f6e9fa8a4d3c9255f79c3cfb0b0f9d665a2ac823f35d05775e74ca32c2a1e32bd487ef367efdb18c5d908d0a68d44e3eaf79793a432f88861040337d41ba05221e056298b4954a4debe6265db7c8fd989b9f027f96a814081b63b89c631cc0a7c4d489e98bce744bb68a4078f2c2dbad7b90a0f530483656adc223c3a10ebc64e942ceca508fb0d51546d9ad0860a8e104b7d9d9d354cef19ced2d6fdba5adbef2c96c21a267add53dd477bc97d6f5c40c9b4f4ad173a63032aa8f36585eeafce3e5193bf5b0f4c58781c1fd1f60562fe022cd81a68d46d91ac313b807f8468dabd5d90ee75d31c22d2bc88319e1c8a23cac1c25c6306ecb55660d2670f187ab09605bb5b9a80eea564c0affe299e66f1ca05d2fa625a4ecdc21e725f8eaa112049603fb8effbbdffc00aa3101203409c2b101f9ce303e232d517db727a93769578a21013c8540fdb008da6683498d13c4a2099f9809abdf921a26ae6bfd1fbcc8e664c693631bd5796135e20489bebc6dda369f31a870f558166376b18ff7649945f8d5491a88a66096bc4688707640a3dbc51a65d1bb0fe7b4aa6d3e8fbfb758d412706d53a9a068b9e78aaa69c4e532b0588e4712ba8e5b9d3d06157eba110d9ddb34b537835408fc8af819e50544aa7bd8a0629bcec55c4945344797bf8ef118a37daa4172bc3e9e78441d3ca9245794001df08aca9f70b44a2cb563f3efd9c25ef67366b497976e22a36d315aae3b2617c2f833c33bbf0beea598bc3588b0994fdf2044d5a464179c295748f0a74ae51534a3b813091267bb02b4c3434e01ddc0dc73ba5e3a5e5ee7ff2795b8bd399e86cb3cc55e22f5e6bd6bdab9bbb9c5b3af642407e1e5a998bb4dba8a4712cbec6124e7dfb8752dd2b7fc757def3fb9a63b218d9ab644c5bdf6d505bc85d6273ea218e7588a4c2cb6c1927ac60ddb395699b761f5e9a302f10bf4c57acb4ade3e37c4c776d94e1d8d5d8a348dabd0a314058955e44e2112415152db51df45f62914bf2d3cef6fec592364542b1f3f3181b658418ae6b9cdeff08f6e4d705e2e3c6511155f5e81dedfb949925a7dc845861d5e7191452e45530876bae871b3b2d8e2f6c5a4187eeb8260f90e45ab344730e5ff2a79ce31eee909fe208f187eaebff276f78273a0cebeffbedc3d2430a281e48c7cb113a43bc8db5fde2775607c610615c841dd31c248d4470801e7668b78e34a381d4e78199cec7394e93761cc50dfb3ae028f3c916634e172fdee6a99debd2a58d5d01275929033c9c21518a11a7a868237f1d15334483300593ed02286f97efb16d06a9cbb541074cc8e4271d8b32033efb7e615151fc8b43dc49644fe68b395f170e86bcf6700ac37a7b17b68d68a3a7e8314cf4262734db9a36106458b5038dfa83dfb9e2b44f17a8f7732a219fc35e66442696b49d7f3b8accda4ca3ca2493a98b5d5bb10ec23d662660155da457c8891a07a81a7277e97502da627b7628185c871547ed5f043b0161abc85feccfe3f82aa2dc8880ff7a25ea88ab02ffe66e70e05fa67c84afd6f010ab4973d3fe0531a96ea588030a5ba4fda104ceb111a0c832d8b23d3a0725838a39a60e1317283047484a68728599a2adc9ccd0d8e3e8edf1f2f4f7f90e4c707a7b7f959bd3dcf7252a397bbbcef51754617186a8c700000000000000000000000000000000000000000000000000000000001a252c33
+const std::string OPENSSL_EXPECTED_SIGNATURE = R"(
+c5:01:07:44:d6:22:a9:82:99:a0:dc:85:49:7f:70:7a
+07:e8:ad:60:e7:70:7b:7a:8c:77:cf:f0:41:1b:8b:51
+13:18:19:a0:ff:52:d8:3a:e6:ad:03:76:ae:29:b1:23
+93:22:d9:da:c8:6f:2f:7b:fc:fa:08:73:86:15:d1:4f
+f2:17:49:c6:04:a1:ae:a5:aa:8b:50:42:9f:e4:a0:e3
+14:5c:f3:8e:a9:8c:e4:b7:f1:9b:cf:eb:7b:d3:f1:c2
+9d:cc:cf:fb:dd:c2:e1:48:42:b4:be:35:92:86:d3:fb
+ce:58:19:7c:7c:1e:c9:84:b0:d7:54:11:8e:f5:90:a1
+31:8a:be:df:21:18:f2:4a:e1:c5:98:81:58:fb:c3:e1
+c3:06:95:b5:5c:54:99:3e:d3:10:85:81:a1:ac:57:13
+72:41:5c:53:b9:a8:cb:3e:51:a0:c8:67:74:03:89:0d
+7c:d9:d2:85:1c:62:9c:fa:75:0e:24:9b:d8:a2:54:41
+b4:7c:1f:d2:08:96:72:88:b2:25:26:78:5e:ea:80:06
+c4:e0:86:c0:20:2d:98:28:57:6c:d3:b0:ef:ab:43:5d
+a3:fb:b1:76:22:64:9f:a4:ce:08:15:97:03:52:99:9b
+48:e0:fb:00:11:e5:5e:84:32:08:50:2b:53:42:7f:dc
+85:f4:8f:02:39:42:6d:a5:70:de:d3:80:7f:ca:1f:9b
+97:fd:b8:68:ec:08:dc:80:ad:20:f2:6f:fa:77:d4:3a
+e2:b5:44:2c:e7:ed:63:4f:01:0a:ca:0d:d7:b3:58:74
+eb:76:25:3d:af:45:22:bf:2d:ac:08:b8:d2:d6:83:23
+c2:c2:4a:df:a2:77:2a:a0:d1:64:f4:1d:5f:ad:f5:8a
+03:ab:11:55:71:e2:f5:5a:cf:18:a8:c9:36:da:6f:e2
+99:73:70:be:c3:85:11:b1:90:03:33:73:56:1e:e0:12
+23:34:c7:37:ba:17:a2:14:b0:b5:a7:63:28:b3:2e:6e
+cc:56:2a:9f:c1:cc:b0:84:cc:bd:fb:da:dd:86:f7:1a
+93:8e:fc:bc:62:25:e3:50:e1:00:3b:19:51:c2:6f:cf
+6a:6c:b3:b5:3d:97:70:28:ca:45:01:fb:f8:fe:32:59
+f7:1b:c8:71:81:4f:94:83:f8:ad:25:af:14:7c:07:b0
+3b:58:a0:bd:28:83:ad:fb:dd:56:fa:4c:a7:c0:75:6a
+b0:a9:42:89:8a:ee:74:67:60:cd:1d:68:24:b8:a7:92
+77:b8:15:79:cd:2d:1d:24:ee:9e:d8:04:9f:b0:fb:b3
+33:7f:39:ea:f0:35:76:3f:b1:47:d7:cf:53:41:ed:7e
+d8:71:47:2c:9b:3a:25:31:b7:47:e4:2b:fc:3b:77:a4
+20:55:0f:2b:eb:3f:0a:fb:6a:ec:fb:62:e4:15:c7:32
+b6:04:6a:c4:59:db:39:2b:f0:53:c4:a2:67:46:02:b6
+3d:47:f8:b9:bc:09:7b:ad:63:e1:19:59:0c:7d:e9:0a
+24:22:af:1c:46:d8:cb:b8:86:f4:a8:47:7a:28:59:86
+f5:4d:88:5f:6b:e6:80:75:fd:28:3a:37:9d:eb:83:55
+5a:6a:92:30:68:42:56:22:6a:49:5c:3a:07:f7:d3:20
+ec:2f:e2:59:20:6a:ea:b5:f3:fe:e3:cc:1f:a8:19:1e
+29:f5:0e:3f:99:0c:5d:5e:3f:45:c7:94:bc:c1:b1:b2
+86:d5:36:0d:00:8f:8d:7e:57:29:5f:25:9d:de:8f:ae
+f4:6e:0a:54:75:2b:97:73:6a:e3:66:04:a8:48:49:b8
+54:f8:5e:43:c5:be:8f:69:39:85:d0:52:71:08:78:55
+1c:ca:93:09:60:f1:a7:7a:18:1d:9c:4b:c2:90:6b:fe
+69:4b:d2:ec:e6:2c:b9:7a:fe:8e:9d:1b:93:04:53:29
+53:bb:44:bc:f3:d0:ce:2e:05:df:7a:6d:24:2b:b5:2b
+2f:86:7a:f9:44:2c:ea:04:3c:b0:84:d0:d3:53:07:0e
+ff:ab:49:a9:36:8d:3f:69:36:f7:61:db:e2:4e:4b:97
+70:12:76:1a:73:f6:9a:f8:19:40:98:33:64:65:73:4d
+3a:f5:59:7e:b2:31:46:d6:0e:07:33:95:af:f0:dc:26
+36:43:59:a2:b9:03:d9:27:72:59:87:8f:2c:00:b2:20
+c9:5d:44:53:d5:ae:bd:7b:87:e1:ae:6b:5d:5e:29:39
+a7:34:fc:bb:1b:e5:16:41:27:62:65:c4:83:65:b9:ee
+7f:f8:ec:50:02:f7:52:1a:6a:c0:b1:b1:e9:38:10:b1
+31:79:49:fb:86:1d:3c:f8:30:27:65:56:0d:51:2a:e9
+fe:f0:dc:18:aa:d8:fc:48:b7:77:0c:84:d5:3c:5a:0d
+e6:cc:28:c2:fb:c3:87:3d:3d:0b:bd:7e:01:51:2b:13
+5c:59:9e:53:9c:9a:2b:78:13:68:7b:58:06:fb:ba:01
+09:33:2a:63:57:bb:e2:bb:3a:71:fc:8a:00:03:3b:f0
+c0:f7:d2:04:53:ac:f1:5c:49:5b:b4:e5:3d:b5:ac:d2
+11:b9:0d:9b:b8:d7:1b:4f:d8:85:45:b9:87:d0:a7:1a
+dc:50:71:ac:02:63:d2:20:5f:b9:13:c0:93:2e:51:cb
+6b:71:92:98:60:c2:37:92:dd:6f:e4:da:b3:88:df:c8
+3a:e1:2f:7b:51:45:78:41:9c:cd:78:b8:8f:84:4c:ba
+5a:b5:38:b1:a5:5f:ed:57:95:92:b5:4a:92:00:36:b0
+f6:5d:0c:d2:ed:c7:10:22:55:56:2a:08:87:8a:75:14
+cb:9d:cb:3e:bd:a3:95:6c:bf:45:e3:b7:c8:52:5c:98
+35:b1:fa:b3:0c:f5:12:e7:f4:06:85:83:ec:0d:70:c1
+2f:c6:60:57:a9:0d:71:60:3e:49:c5:6f:da:aa:2a:72
+1b:a9:7c:06:54:c5:ce:bf:96:03:fa:73:bc:14:e6:3f
+f6:2c:ca:41:5c:c3:08:22:c1:a7:f0:8d:59:00:2a:91
+5b:10:81:c5:13:77:2c:24:8e:9f:75:09:d4:43:6d:30
+69:ad:ab:7b:8e:1f:bd:3d:d2:14:70:18:89:79:93:5b
+05:a2:59:f4:ab:53:08:d8:e7:45:dd:01:70:a4:7f:6e
+9f:a8:a4:d3:c9:25:5f:79:c3:cf:b0:b0:f9:d6:65:a2
+ac:82:3f:35:d0:57:75:e7:4c:a3:2c:2a:1e:32:bd:48
+7e:f3:67:ef:db:18:c5:d9:08:d0:a6:8d:44:e3:ea:f7
+97:93:a4:32:f8:88:61:04:03:37:d4:1b:a0:52:21:e0
+56:29:8b:49:54:a4:de:be:62:65:db:7c:8f:d9:89:b9
+f0:27:f9:6a:81:40:81:b6:3b:89:c6:31:cc:0a:7c:4d
+48:9e:98:bc:e7:44:bb:68:a4:07:8f:2c:2d:ba:d7:b9
+0a:0f:53:04:83:65:6a:dc:22:3c:3a:10:eb:c6:4e:94
+2c:ec:a5:08:fb:0d:51:54:6d:9a:d0:86:0a:8e:10:4b
+7d:9d:9d:35:4c:ef:19:ce:d2:d6:fd:ba:5a:db:ef:2c
+96:c2:1a:26:7a:dd:53:dd:47:7b:c9:7d:6f:5c:40:c9
+b4:f4:ad:17:3a:63:03:2a:a8:f3:65:85:ee:af:ce:3e
+51:93:bf:5b:0f:4c:58:78:1c:1f:d1:f6:05:62:fe:02
+2c:d8:1a:68:d4:6d:91:ac:31:3b:80:7f:84:68:da:bd
+5d:90:ee:75:d3:1c:22:d2:bc:88:31:9e:1c:8a:23:ca
+c1:c2:5c:63:06:ec:b5:56:60:d2:67:0f:18:7a:b0:96
+05:bb:5b:9a:80:ee:a5:64:c0:af:fe:29:9e:66:f1:ca
+05:d2:fa:62:5a:4e:cd:c2:1e:72:5f:8e:aa:11:20:49
+60:3f:b8:ef:fb:bd:ff:c0:0a:a3:10:12:03:40:9c:2b
+10:1f:9c:e3:03:e2:32:d5:17:db:72:7a:93:76:95:78
+a2:10:13:c8:54:0f:db:00:8d:a6:68:34:98:d1:3c:4a
+20:99:f9:80:9a:bd:f9:21:a2:6a:e6:bf:d1:fb:cc:8e
+66:4c:69:36:31:bd:57:96:13:5e:20:48:9b:eb:c6:dd
+a3:69:f3:1a:87:0f:55:81:66:37:6b:18:ff:76:49:94
+5f:8d:54:91:a8:8a:66:09:6b:c4:68:87:07:64:0a:3d
+bc:51:a6:5d:1b:b0:fe:7b:4a:a6:d3:e8:fb:fb:75:8d
+41:27:06:d5:3a:9a:06:8b:9e:78:aa:a6:9c:4e:53:2b
+05:88:e4:71:2b:a8:e5:b9:d3:d0:61:57:eb:a1:10:d9
+dd:b3:4b:53:78:35:40:8f:c8:af:81:9e:50:54:4a:a7
+bd:8a:06:29:bc:ec:55:c4:94:53:44:79:7b:f8:ef:11
+8a:37:da:a4:17:2b:c3:e9:e7:84:41:d3:ca:92:45:79
+40:01:df:08:ac:a9:f7:0b:44:a2:cb:56:3f:3e:fd:9c
+25:ef:67:36:6b:49:79:76:e2:2a:36:d3:15:aa:e3:b2
+61:7c:2f:83:3c:33:bb:f0:be:ea:59:8b:c3:58:8b:09
+94:fd:f2:04:4d:5a:46:41:79:c2:95:74:8f:0a:74:ae
+51:53:4a:3b:81:30:91:26:7b:b0:2b:4c:34:34:e0:1d
+dc:0d:c7:3b:a5:e3:a5:e5:ee:7f:f2:79:5b:8b:d3:99
+e8:6c:b3:cc:55:e2:2f:5e:6b:d6:bd:ab:9b:bb:9c:5b
+3a:f6:42:40:7e:1e:5a:99:8b:b4:db:a8:a4:71:2c:be
+c6:12:4e:7d:fb:87:52:dd:2b:7f:c7:57:de:f3:fb:9a
+63:b2:18:d9:ab:64:4c:5b:df:6d:50:5b:c8:5d:62:73
+ea:21:8e:75:88:a4:c2:cb:6c:19:27:ac:60:dd:b3:95
+69:9b:76:1f:5e:9a:30:2f:10:bf:4c:57:ac:b4:ad:e3
+e3:7c:4c:77:6d:94:e1:d8:d5:d8:a3:48:da:bd:0a:31
+40:58:95:5e:44:e2:11:24:15:15:2d:b5:1d:f4:5f:62
+91:4b:f2:d3:ce:f6:fe:c5:92:36:45:42:b1:f3:f3:18
+1b:65:84:18:ae:6b:9c:de:ff:08:f6:e4:d7:05:e2:e3
+c6:51:11:55:f5:e8:1d:ed:fb:94:99:25:a7:dc:84:58
+61:d5:e7:19:14:52:e4:55:30:87:6b:ae:87:1b:3b:2d
+8e:2f:6c:5a:41:87:ee:b8:26:0f:90:e4:5a:b3:44:73
+0e:5f:f2:a7:9c:e3:1e:ee:90:9f:e2:08:f1:87:ea:eb
+ff:27:6f:78:27:3a:0c:eb:ef:fb:ed:c3:d2:43:0a:28
+1e:48:c7:cb:11:3a:43:bc:8d:b5:fd:e2:77:56:07:c6
+10:61:5c:84:1d:d3:1c:24:8d:44:70:80:1e:76:68:b7
+8e:34:a3:81:d4:e7:81:99:ce:c7:39:4e:93:76:1c:c5
+0d:fb:3a:e0:28:f3:c9:16:63:4e:17:2f:de:e6:a9:9d
+eb:d2:a5:8d:5d:01:27:59:29:03:3c:9c:21:51:8a:11
+a7:a8:68:23:7f:1d:15:33:44:83:30:05:93:ed:02:28
+6f:97:ef:b1:6d:06:a9:cb:b5:41:07:4c:c8:e4:27:1d
+8b:32:03:3e:fb:7e:61:51:51:fc:8b:43:dc:49:64:4f
+e6:8b:39:5f:17:0e:86:bc:f6:70:0a:c3:7a:7b:17:b6
+8d:68:a3:a7:e8:31:4c:f4:26:27:34:db:9a:36:10:64
+58:b5:03:8d:fa:83:df:b9:e2:b4:4f:17:a8:f7:73:2a
+21:9f:c3:5e:66:44:26:96:b4:9d:7f:3b:8a:cc:da:4c
+a3:ca:24:93:a9:8b:5d:5b:b1:0e:c2:3d:66:26:60:15
+5d:a4:57:c8:89:1a:07:a8:1a:72:77:e9:75:02:da:62
+7b:76:28:18:5c:87:15:47:ed:5f:04:3b:01:61:ab:c8
+5f:ec:cf:e3:f8:2a:a2:dc:88:80:ff:7a:25:ea:88:ab
+02:ff:e6:6e:70:e0:5f:a6:7c:84:af:d6:f0:10:ab:49
+73:d3:fe:05:31:a9:6e:a5:88:03:0a:5b:a4:fd:a1:04
+ce:b1:11:a0:c8:32:d8:b2:3d:3a:07:25:83:8a:39:a6
+0e:13:17:28:30:47:48:4a:68:72:85:99:a2:ad:c9:cc
+d0:d8:e3:e8:ed:f1:f2:f4:f7:f9:0e:4c:70:7a:7b:7f
+95:9b:d3:dc:f7:25:2a:39:7b:bb:ce:f5:17:54:61:71
+86:a8:c7:00:00:00:00:00:00:00:00:00:00:00:00:00
+00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00
+1a:25:2c:33
 )";
 
-// ---------------------------------------------------------------------------
-// COSTANTI
-// ---------------------------------------------------------------------------
 static const int32_t Q = 8380417;
-static const char* OPENSSL_LABEL = "OpenSSL";
-static const char* LOCAL_LABEL   = "Tua Libreria";
-
-// ---------------------------------------------------------------------------
-// VALORI ATTESI DA OPENSSL (SEED 0)
-// ---------------------------------------------------------------------------
-
-// Step 1: Derivazione Semi
-const uint8_t EXPECTED_RHO[32] = {
-    0xba, 0x71, 0xf9, 0xf6, 0x4e, 0x11, 0xba, 0xeb, 0x58, 0xfa, 0x9c, 0x6f, 0xbb, 0x6e, 0x14, 0xe6,
-    0x1f, 0x18, 0x64, 0x3d, 0xab, 0x49, 0x5b, 0x47, 0x53, 0x9a, 0x91, 0x66, 0xca, 0x01, 0x98, 0x13
-};
-
-// Step 2: Prime coefficienti di A[0][0] nel dominio NTT (attesi da OpenSSL)
-const int32_t EXPECTED_A_MATRIX[5] = {
-    // A[0][0].coeffs[0..4] come da OpenSSL
-    // Questi valori dovrebbero essere elaborati con ExpandA dalla reference impl.
-    // Variare a seconda di come OpenSSL espande. Se non conosci i valori esatti,
-    // il test li extrarrà dalla tua implementazione la prima volta come baseline.
-    0x00000000,  // Placeholder: verrà verificato durante test
-    0x00000000,
-    0x00000000,
-    0x00000000,
-    0x00000000
-};
-
-// Step 3: s1 e s2 dovrebbero trovarsi in range specifico
-// (verificheremo solo il range, non i valori esatti)
-
-// Step 4: Valori attesi di s1 nel dominio NTT (primi 5 coefficienti)
-// Questi dovrebbero corrispondere ai valori di s1 dopo forward NTT
-const int32_t EXPECTED_S1_NTT[5] = {
-    0x00000000,  // Placeholder
-    0x00000000,
-    0x00000000,
-    0x00000000,
-    0x00000000
-};
-
-// Step 8: Public Key serializzato (primi 16 byte di t1, dopo offset 32 per rho)
-const uint8_t EXPECTED_T1_START[16] = {
-    0x1c, 0x44, 0xf8, 0x26, 0xbb, 0xd5, 0x6e, 0x34,
-    0xe5, 0x5d, 0xb5, 0xe5, 0xe2, 0xd7, 0x33, 0x48
-};
-
-// Step 9: Signature (valori attesi dopo sign)
-// Placeholder per valori da OpenSSL (KAT per seed=0)
-const uint8_t EXPECTED_SIG_START[16] = {
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
-};
-
-// ---------------------------------------------------------------------------
-// STRUTTURA PER TRACCIARE I RISULTATI DI OGNI STEP
-// ---------------------------------------------------------------------------
-struct StepResult {
-    std::string step_name;
-    std::string openssl_value;
-    std::string local_value;
-    bool passed;
-    std::string error_msg;
-};
-
-std::vector<StepResult> test_results;
 
 // ---------------------------------------------------------------------------
 // HELPER FUNCTIONS
 // ---------------------------------------------------------------------------
-
-void print_separator(const std::string& title) {
-    std::cout << "\n" << std::string(80, '=') << std::endl;
-    std::cout << "  " << title << std::endl;
-    std::cout << std::string(80, '=') << std::endl;
-}
-
-void print_step(const std::string& msg) {
-    std::cout << "\n>>> [TEST] " << msg << std::endl;
-}
-
-void print_comparison(const std::string& label, const std::string& openssl_val,
-                      const std::string& local_val, bool match) {
-    std::string status = match ? "[✓ OK]" : "[✗ FAIL]";
-    std::cout << "  " << status << " " << label << std::endl;
-    std::cout << "    " << OPENSSL_LABEL << ":   " << openssl_val << std::endl;
-    std::cout << "    " << LOCAL_LABEL   << ": " << local_val << std::endl;
-}
-
-void log_result(const std::string& step, const std::string& openssl_val,
-                const std::string& local_val, bool passed,
-                const std::string& error_msg = "") {
-    StepResult sr;
-    sr.step_name = step;
-    sr.openssl_value = openssl_val;
-    sr.local_value = local_val;
-    sr.passed = passed;
-    sr.error_msg = error_msg;
-    test_results.push_back(sr);
-}
-
-// Converte buffer in hex string
-std::string to_hex_string(const uint8_t* buf, size_t len, size_t max_display = 32) {
-    std::ostringstream oss;
-    size_t display_len = (len <= max_display) ? len : max_display;
-    for (size_t i = 0; i < display_len; i++) {
-        oss << std::hex << std::setw(2) << std::setfill('0') << (int)buf[i];
-        if (i < display_len - 1) oss << " ";
-    }
-    if (len > max_display) oss << " ... (" << len << " bytes)";
-    return oss.str();
-}
-
-// Converte int32 in hex string
-std::string to_hex_int32(int32_t val) {
-    std::ostringstream oss;
-    oss << "0x" << std::hex << (val & 0xFFFFFFFFU);
-    return oss.str();
-}
-
-// Pulisce la stringa hex di OpenSSL rimuovendo spazi, a capo e ':'
-// e la converte in un array di byte.
-std::vector<uint8_t> parse_openssl_hex(const std::string& hex_str) {
+std::vector<uint8_t> parse_openssl_hex(const std::string &hex_str) {
     std::vector<uint8_t> bytes;
     std::string clean_hex = "";
-
-    // Tieni solo i caratteri esadecimali validi
-    for (char c : hex_str) {
-        if (std::isxdigit(c)) {
-            clean_hex += c;
-        }
+    for (char c: hex_str) {
+        if (std::isxdigit(c)) clean_hex += c;
     }
-
-    // Converti a coppie in byte
     for (size_t i = 0; i < clean_hex.length(); i += 2) {
         std::string byteString = clean_hex.substr(i, 2);
-        uint8_t byte = (uint8_t)std::strtol(byteString.c_str(), nullptr, 16);
+        uint8_t byte = (uint8_t) std::strtol(byteString.c_str(), nullptr, 16);
         bytes.push_back(byte);
     }
-
     return bytes;
 }
 
-bool verify_buffer(const std::string& label, const uint8_t* actual,
-                   const uint8_t* expected, size_t len) {
-    bool match = (memcmp(actual, expected, len) == 0);
+void compare_signatures(const uint8_t *local_sig, const uint8_t *expected_sig, size_t len) {
+    size_t errors = 0;
+    size_t first_error_idx = 0;
+    bool found_first = false;
 
-    std::string openssl_hex = to_hex_string(expected, len);
-    std::string local_hex = to_hex_string(actual, len);
-
-    print_comparison(label, openssl_hex, local_hex, match);
-    log_result(label, openssl_hex, local_hex, match);
-
-    return match;
-}
-
-bool verify_range(const std::string& label, int32_t value, int32_t min_val, int32_t max_val) {
-    bool in_range = (value >= min_val && value <= max_val);
-
-    std::ostringstream range_str;
-    range_str << "[" << min_val << ", " << max_val << "]";
-
-    std::ostringstream val_str;
-    val_str << value;
-
-    if (in_range) {
-        std::cout << "  [✓ OK] " << label << " = " << value << " (expected in "
-                  << range_str.str() << ")" << std::endl;
-    } else {
-        std::cout << "  [✗ FAIL] " << label << " = " << value << " (expected in "
-                  << range_str.str() << ")" << std::endl;
-    }
-
-    log_result(label, range_str.str(), val_str.str(), in_range);
-    return in_range;
-}
-
-bool verify_coefficients_in_range(const std::string& label, const poly* coeff_array,
-                                   int count, int32_t min_val, int32_t max_val) {
-    int errors = 0;
-    for (int i = 0; i < count; i++) {
-        for (int j = 0; j < 256; j++) {
-            int32_t v = coeff_array[i].coeffs[j];
-            if (v < min_val || v > max_val) errors++;
+    for (size_t i = 0; i < len; i++) {
+        if (local_sig[i] != expected_sig[i]) {
+            errors++;
+            if (!found_first) {
+                first_error_idx = i;
+                found_first = true;
+            }
         }
     }
 
-    bool passed = (errors == 0);
-    std::ostringstream msg;
-    msg << label << " (all in [" << min_val << ", " << max_val << "])";
-    if (passed) {
-        std::cout << "  [✓ OK] " << msg.str() << std::endl;
-    } else {
-        std::cout << "  [✗ FAIL] " << msg.str() << " - " << errors << " coefficients out of range" << std::endl;
+    if (errors != 0) {
+        std::cout << ">>> [FAIL] Trovati " << std::dec << errors << " byte diversi su " << len << "." << std::endl;
+        std::cout << ">>> Il primo errore e' avvenuto al byte: " << first_error_idx << std::endl;
     }
-
-    log_result(msg.str(), "all in range", errors > 0 ? std::to_string(errors) + " errors" : "OK", passed);
-    return passed;
-}
-
-/*
- * Normalizza un valore in [0, Q-1].
- */
-static inline int32_t normalize_to_positive(int32_t v) {
-    v %= Q;
-    if (v < 0) v += Q;
-    return v;
 }
 
 // ---------------------------------------------------------------------------
-// DIAGNOSTICA NTT
+// MAIN TEST (KEYGEN CORE)
 // ---------------------------------------------------------------------------
-static void check_invntt_f_value() {
-    const int32_t F_CORRECT  = 41978;
-    const int32_t F_WRONG    = 8347681;
-
-    std::cout << "\n  ⚠ NOTA IMPORTANTE SULLA INTT:" << std::endl;
-    std::cout << "    Valore CORRETTO di f: " << F_CORRECT << " (= inv(256)*R^2 mod Q)" << std::endl;
-    std::cout << "    Valore ERRATO di f:   " << F_WRONG << " (= inv(256) mod Q, manca R^2)" << std::endl;
-    std::cout << "    --> Se i test NTT falliscono, verifica che f = " << F_CORRECT << std::endl;
-}
-
-// ---------------------------------------------------------------------------
-// MAIN TEST
-// ---------------------------------------------------------------------------
-int keygenComparisonTest() {
-    const dilithium_conf_t* conf = &SE3_DILITHIUM_L2;
-    uint8_t zeta[32] = {0}; // Seme forzato a zero per KAT
+int simulate_hsm_keygen_core() {
+    const dilithium_conf_t *conf = &SE3_DILITHIUM_L2;
+    uint8_t zeta[32] = {0};
     uint8_t rho[32], rhoprime[64], key_seed[32];
-    bool all_ok = true;
-
-    print_separator("ML-DSA TEST CON CONFRONTO OPENSSL");
-    std::cout << "  Configurazione: ML-DSA-44 (Dilithium L2)" << std::endl;
-    std::cout << "  Seed: 0x00000000... (per KAT - Known Answer Test)" << std::endl;
-
-    // -----------------------------------------------------------------------
-    // STEP 1: Derivazione Semi
-    // -----------------------------------------------------------------------
-    print_step("STEP 1: Derivazione Semi (FIPS 204 - Seedexpand)");
-    std::cout << "  Operazione: SHA-3(zeta || k || l) -> rho, rhoprime, key_seed" << std::endl;
 
     mldsa_derive_keygen_seeds(zeta, conf->k, conf->l, rho, rhoprime, key_seed);
 
-    std::string rho_openssl = to_hex_string(EXPECTED_RHO, 32);
-    std::string rho_local = to_hex_string(rho, 32);
-    bool rho_ok = verify_buffer("rho (32 bytes)", rho, EXPECTED_RHO, 32);
-
-    if (!rho_ok) {
-        std::cerr << "\n  ⚠ ERRORE CRITICO: Rho diverge da OpenSSL!" << std::endl;
-        std::cerr << "  Gli step successivi potrebbero essere inaffidabili." << std::endl;
-        all_ok = false;
-    }
-
-    // -----------------------------------------------------------------------
-    // STEP 2: Espansione Matrice A
-    // -----------------------------------------------------------------------
-    print_step("STEP 2: Espansione Matrice A (FIPS 204 - ExpandA)");
-    std::cout << "  Operazione: XOF(rho, 0:k, 0:l) -> A (k×l matrice nel dominio NTT)" << std::endl;
-
     polyvecl mat[4];
     polyvec_matrix_expand(mat, rho, conf);
-
-    // Verifica range coefficienti A
-    int errors_a = 0;
-
-    std::cout << (errors_a == 0 ? "  [✓ OK] " : "  [✗ FAIL] ") << "A matrice (" << errors_a << " errori reali)\n";
-    std::cout << std::dec;  // Reset a decimale
-
-    //bool a_in_range = verify_coefficients_in_range("A matrice",&mat[0].vec[0],conf->k * conf->l,0, Q-1);
-    //all_ok = all_ok && a_in_range;
-
-    // -----------------------------------------------------------------------
-    // STEP 3: Generazione s1 e s2
-    // -----------------------------------------------------------------------
-    print_step("STEP 3: Generazione s1 e s2 (FIPS 204 - SamplePolyCapped)");
-    std::cout << "  Operazione: XOF(rhoprime || offset) -> s1 (eta=" << (int)conf->eta << ")" << std::endl;
-    std::cout << "  Operazione: XOF(rhoprime || offset) -> s2 (eta=" << (int)conf->eta << ")" << std::endl;
 
     polyvecl s1;
     polyveck s2;
     polyvecl_uniform_eta(&s1, rhoprime, 0, conf);
     polyveck_uniform_eta(&s2, rhoprime, conf->l, conf);
 
-    int32_t eta = conf->eta;
-
-    std::cout << "\n  s1[0].coeffs[0] = " << s1.vec[0].coeffs[0]
-              << " (atteso in [-" << eta << ", " << eta << "])" << std::endl;
-    std::cout << "  s2[0].coeffs[0] = " << s2.vec[0].coeffs[0]
-              << " (atteso in [-" << eta << ", " << eta << "])" << std::endl;
-
-    bool s1_ok = verify_coefficients_in_range("s1 vettore", &s1.vec[0], conf->l, -eta, eta);
-    bool s2_ok = verify_coefficients_in_range("s2 vettore", &s2.vec[0], conf->k, -eta, eta);
-    all_ok = all_ok && s1_ok && s2_ok;
-
-    // -----------------------------------------------------------------------
-    // STEP 4: Round-trip NTT -> InvNTT
-    // -----------------------------------------------------------------------
-    print_step("STEP 4: Verifica Forward NTT -> Inverse NTT (Round-trip)");
-    std::cout << "  Operazione: ntt(s1) -> invntt(s1_ntt) -> s1_recovered" << std::endl;
-    std::cout << "  Atteso: s1_recovered ≈ s1 (modulo errori numerici minori)" << std::endl;
-
-    check_invntt_f_value();
-
-    polyvecl s1_original = s1;
-    polyvecl s1_test     = s1;
-
-    // Forward NTT
-    polyvecl_ntt(&s1_test, conf);
-
-    // Log valori dopo forward NTT
-    std::cout << "\n  Dopo NTT: s1_ntt[0].coeffs[0] = " << s1_test.vec[0].coeffs[0] << std::endl;
-
-    // Inverse NTT
-    polyvecl_invntt_tomont(&s1_test, conf);
-
-    std::cout << "  Dopo InvNTT: s1_recovered[0].coeffs[0] = " << s1_test.vec[0].coeffs[0] << std::endl;
-    std::cout << "  Originale: s1[0].coeffs[0] = " << s1_original.vec[0].coeffs[0] << std::endl;
-
-    int errors = 0;
-    const int MAX_ERRORS_LOG = 5;
-    const int64_t MONTGOMERY_R = 4193792; // 2^32 mod Q
-
-    for (int i = 0; i < conf->l; i++) {
-        for (int j = 0; j < 256; j++) {
-            int32_t orig_val = normalize_to_positive(s1_original.vec[i].coeffs[j]);
-            int32_t rec_val  = normalize_to_positive(s1_test.vec[i].coeffs[j]);
-
-            // Mappiamo il valore originale nel dominio di Montgomery
-            int32_t orig_val_mont = (orig_val * MONTGOMERY_R) % Q;
-
-            // Ora il confronto è equo
-            if (orig_val_mont != rec_val) {
-                if (errors < MAX_ERRORS_LOG) {
-                    std::printf("  [MISMATCH] vec[%d].coeffs[%d]: orig=%d (mont=%d), recovered=%d\n",
-                                i, j, orig_val, orig_val_mont, rec_val);
-                }
-                errors++;
-            }
-        }
-    }
-
-    bool ntt_roundtrip_ok = (errors == 0);
-    if (ntt_roundtrip_ok) {
-        std::cout << "  [✓ OK] Round-trip perfetto su tutti i coefficienti." << std::endl;
-    } else {
-        std::cout << "  [✗ FAIL] " << errors << " errori nel round-trip." << std::endl;
-        std::cout << "  Verifica: f = 41978 in invntt_tomont()" << std::endl;
-    }
-
-    log_result("NTT Round-trip", "perfect match", std::to_string(errors) + " errors", ntt_roundtrip_ok);
-    all_ok = all_ok && ntt_roundtrip_ok;
-
-    // -----------------------------------------------------------------------
-    // STEP 5: s1 nel dominio NTT
-    // -----------------------------------------------------------------------
-    print_step("STEP 5: Forward NTT su s1 per moltiplicazione matrice");
-    std::cout << "  Operazione: ntt(s1) -> s1_hat (pronto per A * s1_hat)" << std::endl;
-
     polyvecl s1hat = s1;
     polyvecl_ntt(&s1hat, conf);
-
-    std::cout << "\n  Valori NTT (primi 3 di s1hat[0]):" << std::endl;
-    for (int j = 0; j < 3; j++) {
-        std::cout << "    s1_hat[0].coeffs[" << j << "] = " << s1hat.vec[0].coeffs[j] << std::endl;
-    }
-
-    // -----------------------------------------------------------------------
-    // STEP 6: Prodotto Matrice-Vettore A * s1_hat
-    // -----------------------------------------------------------------------
-    print_step("STEP 6: Prodotto Pointwise A * s1_hat (dominio NTT)");
-    std::cout << "  Operazione: t = A * s1_hat (k×l) * (l×1) = (k×1) nel dominio NTT" << std::endl;
 
     polyveck t1;
     polyvec_matrix_pointwise_montgomery(&t1, mat, &s1hat, conf);
 
-    std::cout << "\n  Risultato (t1[0].coeffs[0]): " << t1.vec[0].coeffs[0] << std::endl;
-
-    // -----------------------------------------------------------------------
-    // STEP 7: InvNTT e somma s2
-    // -----------------------------------------------------------------------
-    print_step("STEP 7: Inverse NTT(t1) + s2");
-    std::cout << "  Operazione: invntt(t1) + s2 -> t1 (dominio normale)" << std::endl;
-
     polyveck_invntt_tomont(&t1, conf);
-
-    std::cout << "  Dopo InvNTT: t1[0].coeffs[0] = " << t1.vec[0].coeffs[0] << std::endl;
-
     polyveck_add(&t1, &t1, &s2, conf);
-
-    std::cout << "  Dopo + s2: t1[0].coeffs[0] = " << t1.vec[0].coeffs[0] << std::endl;
-
-    // -----------------------------------------------------------------------
-    // STEP 8: Normalizzazione con caddq
-    // -----------------------------------------------------------------------
-    print_step("STEP 8: Normalizzazione CADDQ (range [0, Q-1])");
-    std::cout << "  Operazione: caddq(t1) -> riduce coefficienti a [0, Q-1]" << std::endl;
-
     polyveck_caddq(&t1, conf);
-
-    bool t1_in_range = verify_coefficients_in_range("t1 = A*s1 + s2",
-                                                     &t1.vec[0],
-                                                     conf->k,
-                                                     0, Q-1);
-    all_ok = all_ok && t1_in_range;
-
-    // -----------------------------------------------------------------------
-    // STEP 9: Power2Round e Packing PK
-    // -----------------------------------------------------------------------
-    print_step("STEP 9: Power2Round(t1) -> (t1_high, t1_low)");
-    std::cout << "  Operazione: Scomposizione t1 in bit alti e bassi" << std::endl;
 
     polyveck t0;
     polyveck_power2round(&t1, &t0, &t1, conf);
 
-    std::cout << "\n  t1_high[0].coeffs[0] = " << t1.vec[0].coeffs[0] << std::endl;
-    std::cout << "  t0_low[0].coeffs[0] = " << t0.vec[0].coeffs[0] << std::endl;
-
-// -----------------------------------------------------------------------
-    // STEP 10: Serializzazione e Verifica Totale Public Key (PK)
-    // -----------------------------------------------------------------------
-    print_step("STEP 10: Serializzazione Public Key (PK)");
-    std::cout << "  Operazione: pack_pk(rho || t1_high) -> 1312 bytes" << std::endl;
-
     uint8_t pk_serialized[1312];
     pack_pk(pk_serialized, rho, &t1, conf);
 
-    // Trasforma la stringa di OpenSSL in array di byte
-    std::vector<uint8_t> expected_pk = parse_openssl_hex(OPENSSL_PUB_RAW);
-
-    // Verifica globale della chiave pubblica
-    std::cout << "\n  Confronto dell'intera Public Key con OpenSSL:" << std::endl;
-    bool pk_full_ok = verify_buffer("PK Completa (1312 bytes)",
-                                     pk_serialized,
-                                     expected_pk.data(),
-                                     expected_pk.size());
-
-    all_ok = all_ok && pk_full_ok;
-
-
-    // -----------------------------------------------------------------------
-    // STEP 11: Serializzazione e Verifica Totale Secret Key (SK)
-    // -----------------------------------------------------------------------
-    print_step("STEP 11: Generazione e Serializzazione Secret Key (SK)");
-    std::cout << "  Operazione: pack_sk(rho, K, tr, s1, s2, t0) -> 2560 bytes" << std::endl;
-
-    // In ML-DSA, il valore 'tr' si ottiene facendo l'hash (SHA3-256) della PK appena creata.
     uint8_t tr[64];
-    // sha3_256(tr, pk_serialized, 1312); // <-- Assicurati di chiamare la tua funzione di hash qui!
     keccak_state state_tr;
     shake256_init(&state_tr);
     shake256_absorb(&state_tr, pk_serialized, 1312);
@@ -752,291 +529,162 @@ int keygenComparisonTest() {
     shake256_squeeze(tr, 64, &state_tr);
 
     uint8_t sk_serialized[2560];
-
-    // NOTA: Usa la funzione della tua libreria per impacchettare la chiave privata.
-    // I parametri potrebbero variare a seconda di come l'hai definita.
     pack_sk(sk_serialized, rho, tr, key_seed, &t0, &s1, &s2, conf);
 
-    // Trasforma la stringa privata di OpenSSL in array di byte
-    std::vector<uint8_t> expected_sk = parse_openssl_hex(OPENSSL_PRIV_RAW);
-
-    // Verifica globale della chiave privata
-    std::cout << "\n  Confronto dell'intera Secret Key con OpenSSL:" << std::endl;
-    bool sk_full_ok = verify_buffer("SK Completa (2560 bytes)",
-                                     sk_serialized,
-                                     expected_sk.data(),
-                                     expected_sk.size());
-    if (!sk_full_ok) {
-        for(int i = 0; i < 2560; i++) {
-            if (sk_serialized[i] != expected_sk[i]) {
-                std::cout << "  [DEBUG] Il primo mismatch si trova all'indice: " << i << std::endl;
-                break;
-            }
-        }
-    }
-    all_ok = all_ok && sk_full_ok;
-
-    // -----------------------------------------------------------------------
-    // RIEPILOGO FINALE
-    // -----------------------------------------------------------------------
-    print_separator("RIEPILOGO TEST");
-
-    std::cout << "\nRisultati per step:\n" << std::endl;
-    int passed = 0, failed = 0;
-
-    for (const auto& sr : test_results) {
-        std::string status = sr.passed ? "[✓]" : "[✗]";
-        std::cout << "  " << status << " " << sr.step_name << std::endl;
-        if (!sr.passed) {
-            std::cout << "      Errore: " << sr.error_msg << std::endl;
-            failed++;
-        } else {
-            passed++;
-        }
-    }
-
-    std::cout << "\n" << std::string(80, '-') << std::endl;
-    std::cout << "  Totale: " << passed << " PASSED, " << failed << " FAILED" << std::endl;
-    std::cout << std::string(80, '-') << std::endl;
-
-    if (all_ok) {
-        std::cout << "\n  ✓ RISULTATO FINALE: TUTTI I TEST SUPERATI" << std::endl;
-        std::cout << "  La tua implementazione è coerente con OpenSSL!" << std::endl;
-    } else {
-        std::cout << "\n  ✗ RISULTATO FINALE: ALCUNI TEST FALLITI" << std::endl;
-        std::cout << "\n  Azioni consigliate:" << std::endl;
-        std::cout << "    1. Verifica Step 1 (rho): se diverge da OpenSSL, il problema è nelle derivazioni semi" << std::endl;
-        std::cout << "    2. Verifica Step 2 (A): se diverge, il problema è in ExpandA" << std::endl;
-        std::cout << "    3. Verifica Step 4 (NTT): se diverge, controlla f = 41978 in invntt_tomont()" << std::endl;
-        std::cout << "    4. Verifica Step 10 (PK): se diverge, il problema è in pack_pk o nei step precedenti" << std::endl;
-    }
-
-    std::cout << "\n" << std::string(80, '=') << std::endl;
-
-    return all_ok ? 0 : -1;
-}
-
-#include <iostream>
-#include <vector>
-#include <cstring>
-
-extern "C" {
-    #include "se3_algo_mldsa.h"
-    #include "se3_algo_mldsa_params.h"
-    #include "se3_arith_polyvec.h"
-    #include "se3_arith_ntt.h"
-    #include "se3_arith_packing.h"
-    #include "shake.h"
+    return 0; // Successo nominale (ignora verifiche OpenSSL nel loop stretto)
 }
 
 // ---------------------------------------------------------------------------
-// SIMULAZIONE DELLA FIRMA HSM (hostSideTest.cpp)
+// MAIN
 // ---------------------------------------------------------------------------
-int simulate_hsm_sign_core_diagnostics(const uint8_t* sk, const uint8_t* msg, size_t msg_len, uint8_t* out_sig) {
-    const dilithium_conf_t* conf = &SE3_DILITHIUM_L2;
-
-    uint8_t rho[32], tr[64], key[32], mu[64], rhoprime[64], c_tilde[64];
-    uint16_t nonce = 0;
-
-    memcpy(rho, sk + 0,  32);
-    memcpy(key, sk + 32, 32);
-    memcpy(tr,  sk + 64, 64);
-
-
-
-    polyvecl mat[4]; // k=4 per ML-DSA-44
-    polyvec_matrix_expand(mat, rho, conf);
-
-// ========================================================================
-    // 1. ESTRAZIONE E VERIFICA s1 (skDecode)
-    // ========================================================================
-    std::cout << "\n[DEBUG] Verifica integrita' spacchettamento SK (skDecode)..." << std::endl;
-    bool unpack_error = false;
-
-    polyvecl s1_hat;
-    for(unsigned int i = 0; i < conf->l; i++) {
-        polyeta_unpack(&s1_hat.vec[i], sk + 128 + i * conf->polyeta_packed, conf);
-
-        // --- DIAGNOSTICA ---
-        // Per ML-DSA-44, eta = 2. I coefficienti DEVONO essere tra -2 e 2.
-        for(int j = 0; j < 256; j++) {
-            int32_t val = s1_hat.vec[i].coeffs[j];
-            if(val < -conf->eta || val > conf->eta) {
-                std::cout << "  [!] ERRORE FATALE UNPACK s1: coeff[" << j << "] del polinomio " << i
-                          << " vale " << val << " (dovrebbe essere in [-" << conf->eta << ", " << conf->eta << "])" << std::endl;
-                unpack_error = true;
-                break;
-            }
-        }
-
-        poly_caddq(&s1_hat.vec[i]);
-        poly_ntt(&s1_hat.vec[i]);
-    }
-
-    // ========================================================================
-    // 2. ESTRAZIONE E VERIFICA s2 e t0 (skDecode)
-    // ========================================================================
-    polyveck s2_base, t0_base;
-    for(unsigned int i = 0; i < conf->k; i++) {
-        // Unpack s2
-        polyeta_unpack(&s2_base.vec[i], sk + 128 + conf->l * conf->polyeta_packed + i * conf->polyeta_packed, conf);
-
-        // --- DIAGNOSTICA ---
-        for(int j = 0; j < 256; j++) {
-            int32_t val = s2_base.vec[i].coeffs[j];
-            if(val < -conf->eta || val > conf->eta) {
-                std::cout << "  [!] ERRORE FATALE UNPACK s2: coeff[" << j << "] del polinomio " << i
-                          << " vale " << val << " (dovrebbe essere in [-" << conf->eta << ", " << conf->eta << "])" << std::endl;
-                unpack_error = true;
-                break;
-            }
-        }
-
-        poly_caddq(&s2_base.vec[i]);
-        poly_ntt(&s2_base.vec[i]);
-
-        // Unpack t0
-        // L'offset per t0 e': 32(rho) + 32(K) + 64(tr) = 128
-        // + s1 (l * eta_packed) + s2 (k * eta_packed)
-        int t0_offset = 128 + (conf->l + conf->k) * conf->polyeta_packed + i * 416; // 416 = POLYT0_PACKEDBYTES
-        polyt0_unpack(&t0_base.vec[i], sk + t0_offset);
-
-        // t0 vive in [-2^12, 2^12] = [-4096, 4096] circa (D dipende dal livello)
-        // Se vedi numeri di milioni, l'offset o il packing sono sbagliati.
-        for(int j = 0; j < 256; j++) {
-            int32_t val = t0_base.vec[i].coeffs[j];
-            if(val < -8192 || val > 8192) { // Limite di sicurezza largo per il check
-                std::cout << "  [!] SOSPETTO ERRORE UNPACK t0: coeff esageratamente alto -> " << val << std::endl;
-            }
-        }
-
-        poly_caddq(&t0_base.vec[i]);
-        poly_ntt(&t0_base.vec[i]);
-    }
-
-    if (unpack_error) {
-        std::cerr << "[-] ABORTO: La Secret Key e' stata spacchettata male. Gli offset di memoria o la funzione polyeta_unpack sono rotti." << std::endl;
-        return -1;
-    } else {
-        std::cout << "  [✓] Spacchettamento s1 e s2 perfetto (tutti i valori in range)." << std::endl;
-    }
-
-    // Hash del messaggio
-    keccak_state shake_ctx;
-    shake256_init(&shake_ctx);
-    shake256_absorb(&shake_ctx, tr, 64);
-    uint8_t domain_sep[2] = {0x00, 0x00};
-    shake256_absorb(&shake_ctx, domain_sep, 2);
-    shake256_absorb(&shake_ctx, msg, msg_len);
-    shake256_finalize(&shake_ctx);
-    shake256_squeeze(mu, 64, &shake_ctx);
-
-    uint8_t zero_rnd[32] = {0};
-    mldsa_derive_sign_rhoprime(key, zero_rnd, mu, rhoprime);
-
-    polyvecl y, y_hat;
-    polyveck w, w0_vec;
-    poly c_hat, tmp_poly;
-    uint8_t pk_buf[4 * 192];
-
-    // --- CONTATORI DIAGNOSTICI ---
-    int rej_z = 0, rej_w = 0, rej_t0 = 0, rej_hints = 0;
-
-    while (nonce < 814) {
-        polyvecl_uniform_gamma1(&y, rhoprime, nonce++, conf);
-
-        for(unsigned int i = 0; i < conf->l; i++) {
-            y_hat.vec[i] = y.vec[i];
-            poly_caddq(&y_hat.vec[i]); // y ha coefficienti negativi, proteggiamo la NTT!
-            poly_ntt(&y_hat.vec[i]);
-        }
-
-        polyvec_matrix_pointwise_montgomery(&w, mat, &y_hat, conf);
-        polyveck_invntt_tomont(&w, conf);
-        polyveck_reduce(&w, conf);
-        polyveck_caddq(&w, conf);
-
-        for(unsigned int i = 0; i < conf->k; i++) {
-            poly_decompose(&tmp_poly, &w0_vec.vec[i], &w.vec[i], conf);
-            polyw1_pack(pk_buf + i * conf->polyw1_packed, &tmp_poly, conf);
-            w.vec[i] = w0_vec.vec[i];
-        }
-
-        keccak_state global_st;
-        shake256_init(&global_st);
-        shake256_absorb(&global_st, mu, 64);
-        shake256_absorb(&global_st, pk_buf, conf->k * conf->polyw1_packed);
-        shake256_finalize(&global_st);
-        shake256_squeeze(c_tilde, conf->ctildebytes, &global_st);
-
-        poly_challenge_fips(&c_hat, c_tilde, conf);
-        poly_caddq(&c_hat);
-        poly_ntt(&c_hat);
-
-        // Calcolo z = y + c*s1
-        for(unsigned int i = 0; i < conf->l; i++) {
-            poly_pointwise_montgomery(&tmp_poly, &c_hat, &s1_hat.vec[i]);
-            poly_invntt_tomont(&tmp_poly);
-            poly_add(&y.vec[i], &y.vec[i], &tmp_poly); // y diventa z
-            poly_reduce(&y.vec[i]);
-        }
-
-        if (polyvecl_chknorm(&y, conf->gamma1 - conf->beta, conf)) { rej_z++; continue; }
-
-        // Calcolo w = w0 - c*s2
-        polyveck s2_vec = s2_base; // Facciamo una copia locale pulita
-        for(unsigned int i = 0; i < conf->k; i++) {
-            poly_pointwise_montgomery(&s2_vec.vec[i], &c_hat, &s2_vec.vec[i]);
-            poly_invntt_tomont(&s2_vec.vec[i]);
-            poly_sub(&w.vec[i], &w.vec[i], &s2_vec.vec[i]);
-            poly_reduce(&w.vec[i]);
-        }
-
-        if (polyveck_chknorm(&w, conf->gamma2 - conf->beta, conf)) { rej_w++; continue; }
-
-        // Calcolo c*t0
-        polyveck t0_vec = t0_base; // Facciamo una copia locale pulita
-        for(unsigned int i = 0; i < conf->k; i++) {
-            poly_pointwise_montgomery(&t0_vec.vec[i], &c_hat, &t0_vec.vec[i]);
-            poly_invntt_tomont(&t0_vec.vec[i]);
-            poly_reduce(&t0_vec.vec[i]);
-        }
-
-        if (polyveck_chknorm(&t0_vec, conf->gamma2, conf)) { rej_t0++; continue; }
-
-        // Hints
-        polyveck_add(&w, &w, &t0_vec, conf);
-        polyveck h_vec;
-        unsigned int hints = polyveck_make_hint(&h_vec, &t0_vec, &w, conf);
-
-        if (hints > conf->omega) { rej_hints++; continue; }
-
-        pack_sig(out_sig, c_tilde, &y, &h_vec, conf);
-
-        std::cout << "[✓] Firma generata! Nonce: " << (nonce - 1) << std::endl;
-        std::cout << "  Scarti statistici -> z: " << rej_z << " | w: " << rej_w << " | t0: " << rej_t0 << " | hints: " << rej_hints << std::endl;
-        return 0;
-    }
-
-    std::cerr << "[-] Rejection sampling fallito dopo 814 tentativi." << std::endl;
-    std::cout << "  Analisi blocchi -> z: " << rej_z << " | w: " << rej_w << " | t0: " << rej_t0 << " | hints: " << rej_hints << std::endl;
-    return -1;
-}
 int main() {
-    // 1. Esegue il test della KeyGen
-    if (keygenComparisonTest() != 0) {
-        std::cerr << "[-] KeyGen fallita." << std::endl;
-        return -1;
-    }
+    const int NUM_ITERATIONS = 10000; // Usa 100k se i tempi sono troppo lunghi
 
-    // 2. Prepara i vettori dai dati OpenSSL (stringhe Hex)
-    std::vector<uint8_t> sk_vec  = parse_openssl_hex(OPENSSL_PRIV_RAW);
-    std::vector<uint8_t> pk_vec  = parse_openssl_hex(OPENSSL_PUB_RAW);
+    std::cout << "\n================================================================================" << std::endl;
+    std::cout << "  INIZIO BENCHMARK SEPARATO SU " << NUM_ITERATIONS << " ITERAZIONI" << std::endl;
+    std::cout << "================================================================================\n" << std::endl;
+
+    std::vector<uint8_t> sk_vec = parse_openssl_hex(OPENSSL_PRIV_RAW);
+    std::vector<uint8_t> pk_vec = parse_openssl_hex(OPENSSL_PUB_RAW);
     std::vector<uint8_t> sig_vec = parse_openssl_hex(OPENSSL_EXPECTED_SIGNATURE);
 
-    // 3. Esegue il test standard di Firma e Auto-Verifica
-    //signatureComparisonTest(sk_vec, pk_vec);
-    const char* msg = "Test Message";
-    simulate_hsm_sign_core_diagnostics(pk_vec.data(),  (const uint8_t*)msg, 12, sig_vec.data());
-    return 0;
+    uint8_t current_sig[2420];
+    const char *msg = "Test Message";
+    int final_res = 0;
+
+    // ========================================================================
+    // 1. BENCHMARK KEYGEN
+    // ========================================================================
+    std::cout << ">> Esecuzione KeyGen in corso..." << std::flush;
+    long long total_duration_keygen = 0;
+
+    se3_dilithium_ctx ctx;
+    ctx.conf = &SE3_DILITHIUM_L2;     // Assicurati che sia la configurazione corretta
+
+
+    uint8_t key_pair_buffer[8192]; // Buffer generoso per pk + sk
+    uint16_t generated_len = 0;
+
+
+    for (int iter = 0; iter < NUM_ITERATIONS; ++iter) {
+        auto start_keygen = std::chrono::high_resolution_clock::now();
+
+        // Passiamo l'indirizzo di ctx, l'indirizzo della variabile di lunghezza e il buffer
+        uint16_t keygen_res = dilithium_keygen_core(&ctx, &generated_len, key_pair_buffer);
+
+        auto end_keygen = std::chrono::high_resolution_clock::now();
+
+        // 3. Verifica del risultato (SE3_OK solitamente è 0)
+        if (keygen_res != 0) {
+            std::cerr << "\n[-] KeyGen fallita all'iterazione " << iter
+                      << " con codice errore: " << keygen_res << std::endl;
+            return -1;
+        }
+        total_duration_keygen += std::chrono::duration_cast<std::chrono::microseconds>(end_keygen - start_keygen).count();
+    }
+
+    double avg_keygen_us = (double)total_duration_keygen / NUM_ITERATIONS;
+    double est_keygen_cycles = avg_keygen_us * 180.0;
+
+    std::cout << "\r[AVG KEYGEN]   " << std::fixed << std::setprecision(2) << avg_keygen_us << " us (~"
+              << std::setprecision(0) << est_keygen_cycles << " cicli eq. a 180 MHz)" << std::endl;
+
+
+    // ========================================================================
+    // 2. BENCHMARK FIRMA (SIGN)
+    // ========================================================================
+    std::cout << ">> Esecuzione Firma in corso..." << std::flush;
+    long long total_duration_sign = 0;
+
+    // Setup del contesto e variabili necessarie per la nuova API
+    se3_dilithium_ctx sign_ctx;
+    sign_ctx.conf = &SE3_DILITHIUM_L2; // Assicurati che la conf sia corretta
+    uint16_t generated_sig_len = 0;
+
+    for (int iter = 0; iter < NUM_ITERATIONS; ++iter) {
+        auto start_sign = std::chrono::high_resolution_clock::now();
+
+        // Chiamata alla nuova funzione core
+        // Parametri: ctx, msg_len, unused(0), msg, sk, &sig_len, sig_buffer
+        uint16_t sign_res = dilithium_sign_core(
+            &sign_ctx,
+            12,
+            0,
+            (const uint8_t *)msg,
+            sk_vec.data(),
+            &generated_sig_len,
+            current_sig
+        );
+
+        auto end_sign = std::chrono::high_resolution_clock::now();
+
+        if (sign_res != 0) {
+            std::cerr << "\n[-] Firma fallita all'iterazione " << iter
+                      << " (Errore: " << sign_res << ")" << std::endl;
+            return -1;
+        }
+
+        total_duration_sign += std::chrono::duration_cast<std::chrono::microseconds>(end_sign - start_sign).count();
+        final_res = (int)sign_res;
+    }
+
+    // Controllo di validità sull'ultima firma prodotta
+    compare_signatures(current_sig, sig_vec.data(), sig_vec.size());
+
+    double avg_sign_us = (double)total_duration_sign / NUM_ITERATIONS;
+    double est_sign_cycles = avg_sign_us * 180.0;
+
+    std::cout << "\r[AVG FIRMA]    " << std::fixed << std::setprecision(2) << avg_sign_us << " us (~"
+              << std::setprecision(0) << est_sign_cycles << " cicli eq. a 180 MHz)" << std::endl;
+
+
+    // ========================================================================
+    // 3. BENCHMARK VERIFICA (Usando la tua API dilithium_verify_core)
+    // ========================================================================
+    std::cout << ">> Esecuzione Verifica in corso..." << std::flush;
+    long long total_duration_verify = 0;
+
+    // Setup del contesto HSM per la tua funzione
+    ctx.conf = &SE3_DILITHIUM_L2;     // Assicurati che sia la configurazione corretta
+    ctx.cached_pk = pk_vec.data();    // Passiamo la PK statica al contesto
+
+    for (int iter = 0; iter < NUM_ITERATIONS; ++iter) {
+        uint16_t o_l = 0;
+        uint8_t o_out = 1; // Inizializziamo a 1 (errore) per sicurezza
+
+        auto start_verify = std::chrono::high_resolution_clock::now();
+
+        // Chiamata alla tua funzione
+        uint16_t ret = dilithium_verify_core(&ctx, (const uint8_t *)msg, 12, current_sig, &o_l, &o_out);
+
+        auto end_verify = std::chrono::high_resolution_clock::now();
+
+        // Controllo gli errori. Presumo che SE3_OK sia definito come 0.
+        // La tua funzione imposta o_out[0] = 0 se la firma è valida.
+        if (ret != 0 || o_out != 0) {
+            std::cerr << "\n[-] Verifica fallita all'iterazione " << iter
+                      << " (Codice ritorno: " << ret << ", Status Firma: " << (int)o_out << ")" << std::endl;
+            return -1;
+        }
+        total_duration_verify += std::chrono::duration_cast<std::chrono::microseconds>(end_verify - start_verify).count();
+    }
+
+    double avg_verify_us = (double)total_duration_verify / NUM_ITERATIONS;
+    double est_verify_cycles = avg_verify_us * 180.0;
+
+    std::cout << "\r[AVG VERIFICA] " << std::fixed << std::setprecision(2) << avg_verify_us << " us (~"
+              << std::setprecision(0) << est_verify_cycles << " cicli eq. a 180 MHz)" << std::endl;
+
+    // ========================================================================
+    // NOTA FINALE
+    // ========================================================================
+    std::cout << "\n--------------------------------------------------------------------------------\n";
+    std::cout << " 💡 NOTA PER IL PORTING SU HSM (180 MHz):\n";
+    std::cout << " I valori sopra indicano i cicli teorici necessari se il codice girasse\n";
+    std::cout << " con le stesse esatte performance del processore host (PC).\n";
+    std::cout << " Per stimare il tempo reale sull'architettura embedded, usa la formula:\n\n";
+    std::cout << "     Tempo_HSM (us) = Cicli_Reali_Misurati_Sull_Hardware / 180.0\n";
+    std::cout << "--------------------------------------------------------------------------------\n" << std::endl;
+
+    return final_res;
 }

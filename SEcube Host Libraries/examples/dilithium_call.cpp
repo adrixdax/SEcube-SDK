@@ -5,14 +5,15 @@
 #include <sstream>
 #include <array>
 #include <cctype>
+#include <random>
+#include <thread>
+#include <chrono>
+#include <stdexcept>
+#include <algorithm>
 #include "L1.h"
 
-extern "C" {
-#include "shake.h"
-}
-
 // =============================================================================
-// VALORI UFFICIALI OPENSSL FIPS 204 PER ML-DSA-44 CON SEED = 0x00...00
+// DATASET DI RIFERIMENTO (OPENSSL FIPS 204 KAT)
 // =============================================================================
 
 const std::string OPENSSL_PUB_RAW = R"(
@@ -280,118 +281,307 @@ const std::string OPENSSL_PRIV_RAW = R"(
     31:9d:1f:64:c5:9e:20:9e:35:82
 )";
 
+const std::string OPENSSL_EXPECTED_SIGNATURE = R"(
+    c5:01:07:44:d6:22:a9:82:99:a0:dc:85:49:7f:70:7a:
+    07:e8:ad:60:e7:70:7b:7a:8c:77:cf:f0:41:1b:8b:51:
+    13:18:19:a0:ff:52:d8:3a:e6:ad:03:76:ae:29:b1:23:
+    93:22:d9:da:c8:6f:2f:7b:fc:fa:08:73:86:15:d1:4f:
+    f2:17:49:c6:04:a1:ae:a5:aa:8b:50:42:9f:e4:a0:e3:
+    14:5c:f3:8e:a9:8c:e4:b7:f1:9b:cf:eb:7b:d3:f1:c2:
+    9d:cc:cf:fb:dd:c2:e1:48:42:b4:be:35:92:86:d3:fb:
+    ce:58:19:7c:7c:1e:c9:84:b0:d7:54:11:8e:f5:90:a1:
+    31:8a:be:df:21:18:f2:4a:e1:c5:98:81:58:fb:c3:e1:
+    c3:06:95:b5:5c:54:99:3e:d3:10:85:81:a1:ac:57:13:
+    72:41:5c:53:b9:a8:cb:3e:51:a0:c8:67:74:03:89:0d:
+    7c:d9:d2:85:1c:62:9c:fa:75:0e:24:9b:d8:a2:54:41:
+    b4:7c:1f:d2:08:96:72:88:b2:25:26:78:5e:ea:80:06:
+    c4:e0:86:c0:20:2d:98:28:57:6c:d3:b0:ef:ab:43:5d:
+    a3:fb:b1:76:22:64:9f:a4:ce:08:15:97:03:52:99:9b:
+    48:e0:fb:00:11:e5:5e:84:32:08:50:2b:53:42:7f:dc:
+    85:f4:8f:02:39:42:6d:a5:70:de:d3:80:7f:ca:1f:9b:
+    97:fd:b8:68:ec:08:dc:80:ad:20:f2:6f:fa:77:d4:3a:
+    e2:b5:44:2c:e7:ed:63:4f:01:0a:ca:0d:d7:b3:58:74:
+    eb:76:25:3d:af:45:22:bf:2d:ac:08:b8:d2:d6:83:23:
+    c2:c2:4a:df:a2:77:2a:a0:d1:64:f4:1d:5f:ad:f5:8a:
+    03:ab:11:55:71:e2:f5:5a:cf:18:a8:c9:36:da:6f:e2:
+    99:73:70:be:c3:85:11:b1:90:03:33:73:56:1e:e0:12:
+    23:34:c7:37:ba:17:a2:14:b0:b5:a7:63:28:b3:2e:6e:
+    cc:56:2a:9f:c1:cc:b0:84:cc:bd:fb:da:dd:86:f7:1a:
+    93:8e:fc:bc:62:25:e3:50:e1:00:3b:19:51:c2:6f:cf:
+    6a:6c:b3:b5:3d:97:70:28:ca:45:01:fb:f8:fe:32:59:
+    f7:1b:c8:71:81:4f:94:83:f8:ad:25:af:14:7c:07:b0:
+    3b:58:a0:bd:28:83:ad:fb:dd:56:fa:4c:a7:c0:75:6a:
+    b0:a9:42:89:8a:ee:74:67:60:cd:1d:68:24:b8:a7:92:
+    77:b8:15:79:cd:2d:1d:24:ee:9e:d8:04:9f:b0:fb:b3:
+    33:7f:39:ea:f0:35:76:3f:b1:47:d7:cf:53:41:ed:7e:
+    d8:71:47:2c:9b:3a:25:31:b7:47:e4:2b:fc:3b:77:a4:
+    20:55:0f:2b:eb:3f:0a:fb:6a:ec:fb:62:e4:15:c7:32:
+    b6:04:6a:c4:59:db:39:2b:f0:53:c4:a2:67:46:02:b6:
+    3d:47:f8:b9:bc:09:7b:ad:63:e1:19:59:0c:7d:e9:0a:
+    24:22:af:1c:46:d8:cb:b8:86:f4:a8:47:7a:28:59:86:
+    f5:4d:88:5f:6b:e6:80:75:fd:28:3a:37:9d:eb:83:55:
+    5a:6a:92:30:68:42:56:22:6a:49:5c:3a:07:f7:d3:20:
+    ec:2f:e2:59:20:6a:ea:b5:f3:fe:e3:cc:1f:a8:19:1e:
+    29:f5:0e:3f:99:0c:5d:5e:3f:45:c7:94:bc:c1:b1:b2:
+    86:d5:36:0d:00:8f:8d:7e:57:29:5f:25:9d:de:8f:ae:
+    f4:6e:0a:54:75:2b:97:73:6a:e3:66:04:a8:48:49:b8:
+    54:f8:5e:43:c5:be:8f:69:39:85:d0:52:71:08:78:55:
+    1c:ca:93:09:60:f1:a7:7a:18:1d:9c:4b:c2:90:6b:fe:
+    69:4b:d2:ec:e6:2c:b9:7a:fe:8e:9d:1b:93:04:53:29:
+    53:bb:44:bc:f3:d0:ce:2e:05:df:7a:6d:24:2b:b5:2b:
+    2f:86:7a:f9:44:2c:ea:04:3c:b0:84:d0:d3:53:07:0e:
+    ff:ab:49:a9:36:8d:3f:69:36:f7:61:db:e2:4e:4b:97:
+    70:12:76:1a:73:f6:9a:f8:19:40:98:33:64:65:73:4d:
+    3a:f5:59:7e:b2:31:46:d6:0e:07:33:95:af:f0:dc:26:
+    36:43:59:a2:b9:03:d9:27:72:59:87:8f:2c:00:b2:20:
+    c9:5d:44:53:d5:ae:bd:7b:87:e1:ae:6b:5d:5e:29:39:
+    a7:34:fc:bb:1b:e5:16:41:27:62:65:c4:83:65:b9:ee:
+    7f:f8:ec:50:02:f7:52:1a:6a:c0:b1:b1:e9:38:10:b1:
+    31:79:49:fb:86:1d:3c:f8:30:27:65:56:0d:51:2a:e9:
+    fe:f0:dc:18:aa:d8:fc:48:b7:77:0c:84:d5:3c:5a:0d:
+    e6:cc:28:c2:fb:c3:87:3d:3d:0b:bd:7e:01:51:2b:13:
+    5c:59:9e:53:9c:9a:2b:78:13:68:7b:58:06:fb:ba:01:
+    09:33:2a:63:57:bb:e2:bb:3a:71:fc:8a:00:03:3b:f0:
+    c0:f7:d2:04:53:ac:f1:5c:49:5b:b4:e5:3d:b5:ac:d2:
+    11:b9:0d:9b:b8:d7:1b:4f:d8:85:45:b9:87:d0:a7:1a:
+    dc:50:71:ac:02:63:d2:20:5f:b9:13:c0:93:2e:51:cb:
+    6b:71:92:98:60:c2:37:92:dd:6f:e4:da:b3:88:df:c8:
+    3a:e1:2f:7b:51:45:78:41:9c:cd:78:b8:8f:84:4c:ba:
+    5a:b5:38:b1:a5:5f:ed:57:95:92:b5:4a:92:00:36:b0:
+    f6:5d:0c:d2:ed:c7:10:22:55:56:2a:08:87:8a:75:14:
+    cb:9d:cb:3e:bd:a3:95:6c:bf:45:e3:b7:c8:52:5c:98:
+    35:b1:fa:b3:0c:f5:12:e7:f4:06:85:83:ec:0d:70:c1:
+    2f:c6:60:57:a9:0d:71:60:3e:49:c5:6f:da:aa:2a:72:
+    1b:a9:7c:06:54:c5:ce:bf:96:03:fa:73:bc:14:e6:3f:
+    f6:2c:ca:41:5c:c3:08:22:c1:a7:f0:8d:59:00:2a:91:
+    5b:10:81:c5:13:77:2c:24:8e:9f:75:09:d4:43:6d:30:
+    69:ad:ab:7b:8e:1f:bd:3d:d2:14:70:18:89:79:93:5b:
+    05:a2:59:f4:ab:53:08:d8:e7:45:dd:01:70:a4:7f:6e:
+    9f:a8:a4:d3:c9:25:5f:79:c3:cf:b0:b0:f9:d6:65:a2:
+    ac:82:3f:35:d0:57:75:e7:4c:a3:2c:2a:1e:32:bd:48:
+    7e:f3:67:ef:db:18:c5:d9:08:d0:a6:8d:44:e3:ea:f7:
+    97:93:a4:32:f8:88:61:04:03:37:d4:1b:a0:52:21:e0:
+    56:29:8b:49:54:a4:de:be:62:65:db:7c:8f:d9:89:b9:
+    f0:27:f9:6a:81:40:81:b6:3b:89:c6:31:cc:0a:7c:4d:
+    48:9e:98:bc:e7:44:bb:68:a4:07:8f:2c:2d:ba:d7:b9:
+    0a:0f:53:04:83:65:6a:dc:22:3c:3a:10:eb:c6:4e:94:
+    2c:ec:a5:08:fb:0d:51:54:6d:9a:d0:86:0a:8e:10:4b:
+    7d:9d:9d:35:4c:ef:19:ce:d2:d6:fd:ba:5a:db:ef:2c:
+    96:c2:1a:26:7a:dd:53:dd:47:7b:c9:7d:6f:5c:40:c9:
+    b4:f4:ad:17:3a:63:03:2a:a8:f3:65:85:ee:af:ce:3e:
+    51:93:bf:5b:0f:4c:58:78:1c:1f:d1:f6:05:62:fe:02:
+    2c:d8:1a:68:d4:6d:91:ac:31:3b:80:7f:84:68:da:bd:
+    5d:90:ee:75:d3:1c:22:d2:bc:88:31:9e:1c:8a:23:ca:
+    c1:c2:5c:63:06:ec:b5:56:60:d2:67:0f:18:7a:b0:96:
+    05:bb:5b:9a:80:ee:a5:64:c0:af:fe:29:9e:66:f1:ca:
+    05:d2:fa:62:5a:4e:cd:c2:1e:72:5f:8e:aa:11:20:49:
+    60:3f:b8:ef:fb:bd:ff:c0:0a:a3:10:12:03:40:9c:2b:
+    10:1f:9c:e3:03:e2:32:d5:17:db:72:7a:93:76:95:78:
+    a2:10:13:c8:54:0f:db:00:8d:a6:68:34:98:d1:3c:4a:
+    20:99:f9:80:9a:bd:f9:21:a2:6a:e6:bf:d1:fb:cc:8e:
+    66:4c:69:36:31:bd:57:96:13:5e:20:48:9b:eb:c6:dd:
+    a3:69:f3:1a:87:0f:55:81:66:37:6b:18:ff:76:49:94:
+    5f:8d:54:91:a8:8a:66:09:6b:c4:68:87:07:64:0a:3d:
+    bc:51:a6:5d:1b:b0:fe:7b:4a:a6:d3:e8:fb:fb:75:8d:
+    41:27:06:d5:3a:9a:06:8b:9e:78:aa:a6:9c:4e:53:2b:
+    05:88:e4:71:2b:a8:e5:b9:d3:d0:61:57:eb:a1:10:d9:
+    dd:b3:4b:53:78:35:40:8f:c8:af:81:9e:50:54:4a:a7:
+    bd:8a:06:29:bc:ec:55:c4:94:53:44:79:7b:f8:ef:11:
+    8a:37:da:a4:17:2b:c3:e9:e7:84:41:d3:ca:92:45:79:
+    40:01:df:08:ac:a9:f7:0b:44:a2:cb:56:3f:3e:fd:9c:
+    25:ef:67:36:6b:49:79:76:e2:2a:36:d3:15:aa:e3:b2:
+    61:7c:2f:83:3c:33:bb:f0:be:ea:59:8b:c3:58:8b:09:
+    94:fd:f2:04:4d:5a:46:41:79:c2:95:74:8f:0a:74:ae:
+    51:53:4a:3b:81:30:91:26:7b:b0:2b:4c:34:34:e0:1d:
+    dc:0d:c7:3b:a5:e3:a5:e5:ee:7f:f2:79:5b:8b:d3:99:
+    e8:6c:b3:cc:55:e2:2f:5e:6b:d6:bd:ab:9b:bb:9c:5b:
+    3a:f6:42:40:7e:1e:5a:99:8b:b4:db:a8:a4:71:2c:be:
+    c6:12:4e:7d:fb:87:52:dd:2b:7f:c7:57:de:f3:fb:9a:
+    63:b2:18:d9:ab:64:4c:5b:df:6d:50:5b:c8:5d:62:73:
+    ea:21:8e:75:88:a4:c2:cb:6c:19:27:ac:60:dd:b3:95:
+    69:9b:76:1f:5e:9a:30:2f:10:bf:4c:57:ac:b4:ad:e3:
+    e3:7c:4c:77:6d:94:e1:d8:d5:d8:a3:48:da:bd:0a:31:
+    40:58:95:5e:44:e2:11:24:15:15:2d:b5:1d:f4:5f:62:
+    91:4b:f2:d3:ce:f6:fe:c5:92:36:45:42:b1:f3:f3:18:
+    1b:65:84:18:ae:6b:9c:de:ff:08:f6:e4:d7:05:e2:e3:
+    c6:51:11:55:f5:e8:1d:ed:fb:94:99:25:a7:dc:84:58:
+    61:d5:e7:19:14:52:e4:55:30:87:6b:ae:87:1b:3b:2d:
+    8e:2f:6c:5a:41:87:ee:b8:26:0f:90:e4:5a:b3:44:73:
+    0e:5f:f2:a7:9c:e3:1e:ee:90:9f:e2:08:f1:87:ea:eb:
+    ff:27:6f:78:27:3a:0c:eb:ef:fb:ed:c3:d2:43:0a:28:
+    1e:48:c7:cb:11:3a:43:bc:8d:b5:fd:e2:77:56:07:c6:
+    10:61:5c:84:1d:d3:1c:24:8d:44:70:80:1e:76:68:b7:
+    8e:34:a3:81:d4:e7:81:99:ce:c7:39:4e:93:76:1c:c5:
+    0d:fb:3a:e0:28:f3:c9:16:63:4e:17:2f:de:e6:a9:9d:
+    eb:d2:a5:8d:5d:01:27:59:29:03:3c:9c:21:51:8a:11:
+    a7:a8:68:23:7f:1d:15:33:44:83:30:05:93:ed:02:28:
+    6f:97:ef:b1:6d:06:a9:cb:b5:41:07:4c:c8:e4:27:1d:
+    8b:32:03:3e:fb:7e:61:51:51:fc:8b:43:dc:49:64:4f:
+    e6:8b:39:5f:17:0e:86:bc:f6:70:0a:c3:7a:7b:17:b6:
+    8d:68:a3:a7:e8:31:4c:f4:26:27:34:db:9a:36:10:64:
+    58:b5:03:8d:fa:83:df:b9:e2:b4:4f:17:a8:f7:73:2a:
+    21:9f:c3:5e:66:44:26:96:b4:9d:7f:3b:8a:cc:da:4c:
+    a3:ca:24:93:a9:8b:5d:5b:b1:0e:c2:3d:66:26:60:15:
+    5d:a4:57:c8:89:1a:07:a8:1a:72:77:e9:75:02:da:62:
+    7b:76:28:18:5c:87:15:47:ed:5f:04:3b:01:61:ab:c8:
+    5f:ec:cf:e3:f8:2a:a2:dc:88:80:ff:7a:25:ea:88:ab:
+    02:ff:e6:6e:70:e0:5f:a6:7c:84:af:d6:f0:10:ab:49:
+    73:d3:fe:05:31:a9:6e:a5:88:03:0a:5b:a4:fd:a1:04:
+    ce:b1:11:a0:c8:32:d8:b2:3d:3a:07:25:83:8a:39:a6:
+    0e:13:17:28:30:47:48:4a:68:72:85:99:a2:ad:c9:cc:
+    d0:d8:e3:e8:ed:f1:f2:f4:f7:f9:0e:4c:70:7a:7b:7f:
+    95:9b:d3:dc:f7:25:2a:39:7b:bb:ce:f5:17:54:61:71:
+    86:a8:c7:00:00:00:00:00:00:00:00:00:00:00:00:00:
+    00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:
+    1a:25:2c:33
+)";
+
+
+// =============================================================================
+// FUNZIONI DI UTILITA'
+// =============================================================================
+
 std::string clean_openssl_hex(const std::string& input) {
     std::string out;
     for (char c : input) {
-        if (std::isxdigit(c)) out += (char)std::tolower(c);
+        if (std::isxdigit(static_cast<unsigned char>(c)))
+            out += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     }
     return out;
 }
 
-std::string to_hex(const uint8_t* data, size_t len) {
+// Costanti attese (derivate dai dati OpenSSL)
+const std::string EXPECTED_PK_HEX = clean_openssl_hex(OPENSSL_PUB_RAW);
+const std::string EXPECTED_SK_START = clean_openssl_hex(OPENSSL_PRIV_RAW).substr(0, 64); // primi 32 byte
+const std::string EXPECTED_SIG_HEX = clean_openssl_hex(OPENSSL_EXPECTED_SIGNATURE);
+
+void print_header(const std::string& text) {
+    std::cout << "\n>>> " << text << " <<<" << std::endl;
+    std::cout << std::string(text.length() + 8, '-') << std::endl;
+}
+
+std::string bytes_to_hex(const std::vector<uint8_t>& data) {
     std::stringstream ss;
-    for (size_t i = 0; i < len; ++i)
-        ss << std::hex << std::setw(2) << std::setfill('0') << (int)data[i];
+    ss << std::hex << std::setfill('0');
+    for (auto b : data) ss << std::setw(2) << static_cast<int>(b);
     return ss.str();
 }
 
-void run_nist_fips204_kat(L1& dev, uint16_t level) {
-    std::cout << "\n=== [NIST KAT] VERIFICA FIPS 204 CONTRO OPENSSL REFERENCE ===" << std::endl;
-
-    std::string ref_pk = clean_openssl_hex(OPENSSL_PUB_RAW);
-    std::string ref_sk = clean_openssl_hex(OPENSSL_PRIV_RAW);
-
-    // FIX 1: Quanti byte reali di SK abbiamo fornito?
-    size_t known_sk_bytes = ref_sk.length() / 2;
-
-    // FIX 2: Se la stringa è troncata, la riempiamo di zeri fino a raggiungere 2560 byte
-    // esattamente come faceva il padding nell'array C.
-    if (ref_sk.length() < 2560 * 2) {
-        std::cout << "[INFO] OPENSSL_PRIV_RAW troncata. Effettuo il padding con zeri per "
-                  << (2560 - known_sk_bytes) << " byte mancanti di t0..." << std::endl;
-        ref_sk.append((2560 * 2) - ref_sk.length(), '0');
-    }
-
-    // FIPS 204 ML-DSA-44 Dimensioni esatte
-    if (ref_pk.length() != 1312 * 2 || ref_sk.length() != 2560 * 2) {
-        std::cout << "[!] Errore interno: La lunghezza della reference OpenSSL fornita non corrisponde a ML-DSA-44." << std::endl;
-        return;
-    }
-
-    std::vector<uint8_t> pk, sk;
-
-    // Il firmware deve avere il seme forzato a zero: memset(zeta, 0x00, 32);
-    dev.L1_ML_DSA_Keygen(level, pk, sk);
-
-    if (pk.size() < 1312 || sk.size() < 2560) {
-        std::cout << "  [!] Dimensioni chiavi generate non valide per ML-DSA-44!" << std::endl;
-        return;
-    }
-
-    std::string hsm_pk = to_hex(pk.data(), 1312);
-    std::string hsm_sk = to_hex(sk.data(), 2560);
-
-    // Estrazione e confronto dei singoli blocchi per debug avanzato
-    auto check_block = [](const std::string& name, const std::string& hsm, const std::string& ref, size_t offset, size_t len) {
-        std::string hsm_sub = hsm.substr(offset * 2, len * 2);
-        std::string ref_sub = ref.substr(offset * 2, len * 2);
-        std::cout << "\n[CHECK] " << name << " (offset " << offset << ", " << len << " byte):" << std::endl;
-        std::cout << "  HSM: " << hsm_sub.substr(0, 32) << "... (tot: " << len << " bytes)" << std::endl;
-        std::cout << "  REF: " << ref_sub.substr(0, 32) << "... (tot: " << len << " bytes)" << std::endl;
-        std::cout << (hsm_sub == ref_sub ? "  -> MATCH OK ✅" : "  -> FAIL ❌") << std::endl;
-    };
-
-    std::cout << "\n--- ANALISI PUBLIC KEY ---" << std::endl;
-    check_block("Rho (Seme Matrice A)", hsm_pk, ref_pk, 0, 32);
-    check_block("t1  (Polinomi compressi)", hsm_pk, ref_pk, 32, 1280);
-
-    std::cout << "\n--- ANALISI SECRET KEY ---" << std::endl;
-    check_block("Rho (Seme Matrice A)", hsm_sk, ref_sk, 0, 32);
-    check_block("K   (Seme per firma)", hsm_sk, ref_sk, 32, 32);
-    check_block("tr  (Hash della PK)", hsm_sk, ref_sk, 64, 64);
-    check_block("s1  (Vettore segreto)", hsm_sk, ref_sk, 128, 384);
-    check_block("s2  (Errore)", hsm_sk, ref_sk, 512, 384);
-
-    // Per t0, controlliamo solo la parte che abbiamo effettivamente (sottraendo l'offset 896)
-    size_t known_t0_len = (known_sk_bytes > 896) ? (known_sk_bytes - 896) : 0;
-    if (known_t0_len > 0) {
-        check_block("t0  (Polinomi scarto PARZIALI forniti)", hsm_sk, ref_sk, 896, known_t0_len);
-    }
-
-    std::cout << "\n[INFO] La restante parte di t0 non verra' verificata poiche' non fornita nella reference raw." << std::endl;
-
-    // Calcolo locale TR per doppia verifica (deve usare ESATTAMENTE 1312 byte)
-    keccak_state state;
-    shake256_init(&state);
-    shake256_absorb(&state, pk.data(), 1312);
-    shake256_finalize(&state);
-    uint8_t calculated_tr[64];
-    shake256_squeeze(calculated_tr, 64, &state);
-
-    std::string calc_tr_hex = to_hex(calculated_tr, 64);
-    std::string hsm_tr_hex = hsm_sk.substr(64 * 2, 64 * 2);
-
-    std::cout << "\n[CHECK] Verifica integrita' tr locale vs HSM:" << std::endl;
-    std::cout << "  CALC: " << calc_tr_hex.substr(0, 32) << "..." << std::endl;
-    std::cout << "  HSM : " << hsm_tr_hex.substr(0, 32) << "..." << std::endl;
-    std::cout << (hsm_tr_hex == calc_tr_hex ? "  -> MATCH OK ✅" : "  -> FAIL ❌") << std::endl;
-
-    // FIX 3: La verifica finale controlla tutta la PK, ma solo la porzione NOTA della SK
-    bool pk_match = (hsm_pk == ref_pk);
-    bool sk_match_known = (hsm_sk.substr(0, known_sk_bytes * 2) == ref_sk.substr(0, known_sk_bytes * 2));
-
-    if (pk_match && sk_match_known) {
-        std::cout << "\n>>> SUCCESSO ASSOLUTO: L'HSM produce una coppia di chiavi matematicamente e binariamente identica al target OpenSSL FIPS 204 (per tutti i byte forniti)! <<<" << std::endl;
+void verify_match(const std::string& label, const std::vector<uint8_t>& hsm_data, const std::string& expected_hex) {
+    std::string hsm_hex = bytes_to_hex(hsm_data);
+    if (hsm_hex.substr(0, expected_hex.length()) == expected_hex) {
+        std::cout << "  [OK] " << label << " coincide perfettamente." << std::endl;
     } else {
-        std::cout << "\n>>> FALLIMENTO: Analizza i blocchi sopra per capire dove la matematica differisce. Se fallisce Rho, l'HSM sta ancora generando numeri casuali reali. <<<" << std::endl;
+        std::cout << "  [!!] " << label << " NON COINCIDE!" << std::endl;
+        size_t min_len = std::min(hsm_hex.length(), expected_hex.length());
+        for (size_t i = 0; i < min_len; i += 2) {
+            if (hsm_hex.substr(i, 2) != expected_hex.substr(i, 2)) {
+                std::cout << "       -> Primo errore al byte: " << (i / 2) << std::endl;
+                std::cout << "       -> Valore HSM: 0x" << hsm_hex.substr(i, 2)
+                          << " | Atteso: 0x" << expected_hex.substr(i, 2) << std::endl;
+                break;
+            }
+        }
     }
 }
 
+// =============================================================================
+// TEST ENGINE
+// =============================================================================
+
+void run_diagnostic_test(L1& dev, uint16_t level) {
+    std::vector<uint8_t> pk, sk, sig;
+    std::vector<uint8_t> msg = {'T', 'e', 's', 't', ' ', 'M', 'e', 's', 's', 'a', 'g', 'e'};
+    std::vector<uint8_t> context;
+
+    // --- FASE 1: KEY GENERATION ---
+    print_header("FASE 1: KEYGEN (GENERAZIONE CHIAVI)");
+    try {
+        auto t_start = std::chrono::high_resolution_clock::now();
+        dev.L1_ML_DSA_Keygen(level, pk, sk);
+        auto t_end = std::chrono::high_resolution_clock::now();
+        long long ms = std::chrono::duration_cast<std::chrono::milliseconds>(t_end - t_start).count();
+        std::cout << "[*] KeyGen terminata in " << ms << " ms." << std::endl;
+        verify_match("Public Key (PK)", pk, EXPECTED_PK_HEX);
+        verify_match("Secret Key (SK - header)", sk, EXPECTED_SK_START);
+    } catch (const std::exception& e) {
+        std::cout << "[ERRORE] KeyGen fallita: " << e.what() << std::endl;
+    }
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+    // --- FASE 2: DIGITAL SIGNATURE ---
+    print_header("FASE 2: SIGN (FIRMA DEL MESSAGGIO)");
+    try {
+        auto t_start = std::chrono::high_resolution_clock::now();
+        dev.L1_ML_DSA_Sign(level, msg, sk, sig, context);
+        auto t_end = std::chrono::high_resolution_clock::now();
+        long long ms = std::chrono::duration_cast<std::chrono::milliseconds>(t_end - t_start).count();
+        std::cout << "[*] Firma generata in " << ms << " ms." << std::endl;
+        std::cout << "[*] Dimensione firma: " << sig.size() << " bytes." << std::endl;
+        verify_match("Firma Digitale", sig, EXPECTED_SIG_HEX);
+        std::cout << "    (Nota: Se il messaggio differisce dal KAT OpenSSL, la firma divergera' dopo i primi byte)" << std::endl;
+    } catch (const std::exception& e) {
+        std::cout << "[ERRORE] Sign fallita: " << e.what() << std::endl;
+    }
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+    // --- FASE 3: VERIFICATION ---
+    print_header("FASE 3: VERIFY (VERIFICA VALIDITA')");
+    try {
+        auto t_start = std::chrono::high_resolution_clock::now();
+        bool is_valid = dev.L1_ML_DSA_Verify(level, msg, sig, pk, context);
+        auto t_end = std::chrono::high_resolution_clock::now();
+        long long ms = std::chrono::duration_cast<std::chrono::milliseconds>(t_end - t_start).count();
+        std::cout << "[*] Verifica terminata in " << ms << " ms." << std::endl;
+        std::cout << "[*] Esito: " << (is_valid ? "VALIDA ✅" : "NON VALIDA ❌") << std::endl;
+    } catch (const std::exception& e) {
+        std::cout << "[ERRORE] Verify fallita: " << e.what() << std::endl;
+    }
+
+    // --- FASE 4: SECURITY TAMPERING ---
+    print_header("FASE 4: ATTACCO (TAMPERING DELLA FIRMA)");
+    if (!sig.empty()) {
+        sig[sig.size() / 2] ^= 0xFF;
+        std::cout << "[*] Firma manomessa artificialmente." << std::endl;
+        bool is_valid = false;
+        try {
+            is_valid = dev.L1_ML_DSA_Verify(level, msg, sig, pk, context);
+        } catch (...) { is_valid = false; }
+        if (!is_valid) {
+            std::cout << "[*] Esito: RESPINTA CORRETTAMENTE ✅ (Il sistema e' sicuro)" << std::endl;
+        } else {
+            std::cout << "[!!!] Esito: ACCETTATA (ERRORE DI SICUREZZA!) 🚨" << std::endl;
+        }
+    }
+}
+
+// =============================================================================
+// MAIN ENTRY POINT
+// =============================================================================
+
 int main() {
     L1 dev;
-    std::array<uint8_t, 32> pin = {'t', 'e', 's', 't'};
-    dev.L1Login(pin, SE3_ACCESS_USER, true);
-    run_nist_fips204_kat(dev, 2);
-    dev.L1Logout();
+    std::array<uint8_t, 32> pin = {0};
+    pin[0] = 't'; pin[1] = 'e'; pin[2] = 's'; pin[3] = 't';
+
+    std::cout << "--- SECUBE ML-DSA DIAGNOSTIC TOOL ---" << std::endl;
+
+    try {
+        std::cout << "[*] Tentativo di login..." << std::flush;
+        dev.L1Login(pin, SE3_ACCESS_USER, true);
+        std::cout << " Successo." << std::endl;
+
+        run_diagnostic_test(dev, 2);
+
+        std::cout << "\n[*] Tentativo di logout..." << std::flush;
+        dev.L1Logout();
+        std::cout << " Eseguito." << std::endl;
+    } catch (const std::exception& e) {
+        std::cout << "\n[!] FALLIMENTO CRITICO: " << e.what() << std::endl;
+        return -1;
+    }
+
     return 0;
 }

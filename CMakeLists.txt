@@ -5,52 +5,44 @@ set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_C_STANDARD 99)
 
 # --- PERCORSI ---
-set(FIRMWARE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/SEcube USBStick Firmware/Project")
-set(FIRMWARE_C_DIR "${FIRMWARE_ROOT}/Src/Device")
-set(FIRMWARE_INC_DIR "${FIRMWARE_ROOT}/Inc")
 set(HOST_LIB_DIR "${CMAKE_CURRENT_SOURCE_DIR}/SEcube Host Libraries/sources")
-set(OPENSSL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/openssl-master")
-set(ML_DSA_OPENSSL "${OPENSSL_DIR}/crypto/ml_dsa"
-)
-
-
 
 # --- INCLUDE ---
 include_directories(
-        "${FIRMWARE_INC_DIR}/Device"
-        "${FIRMWARE_INC_DIR}/Common"
-        "${FIRMWARE_INC_DIR}"
         "${HOST_LIB_DIR}"
         "${HOST_LIB_DIR}/L0"
         "${HOST_LIB_DIR}/L0/L0 Base"
+        "${HOST_LIB_DIR}/L0/L0 Support"    # <--- AGGIUNTO per AES/HMAC
         "${HOST_LIB_DIR}/L1"
         "${HOST_LIB_DIR}/L1/L1 Base"
-        "${OPENSSL_DIR}/include"
+        "${HOST_LIB_DIR}/L1/Crypto Libraries" # <--- AGGIUNTO per Keccak
 )
 
 # --- SORGENTI ---
 add_executable(SEcube_SDK
-        # 1. LOGICA FIRMWARE (HSM) - TUTTI i file necessari per la matematica
-        "${FIRMWARE_C_DIR}/se3_algo_mldsa.c"
-        "${FIRMWARE_C_DIR}/se3_arith_ntt.c"
-        "${FIRMWARE_C_DIR}/se3_arith_polyvec.c"
-        "${FIRMWARE_C_DIR}/se3_arith_packing.c"
-        "${FIRMWARE_C_DIR}/se3_arith_poly.c"      # <--- AGGIUNTO: Risolve polyeta_unpack, ecc.
-        "${FIRMWARE_ROOT}/Src/Common/Keccak.c"    # UNICO Keccak
-        "${FIRMWARE_ROOT}/Src/Common/shake.c"     # UNICO Shake
-        # 2. OpenSSL CrossReference
-        "${ML_DSA_OPENSSL}/ml_dsa_key.c"
+        # 2. HOST LIBRARIES - LIVELLO L0 (Hardware)
+        "${HOST_LIB_DIR}/L0/L0.cpp"
+        "${HOST_LIB_DIR}/L0/L0 Base/L0_base.cpp"
+        "${HOST_LIB_DIR}/L0/L0_commodities.cpp"
+        "${HOST_LIB_DIR}/L0/L0_communication.cpp"
+        "${HOST_LIB_DIR}/L0/L0_provision.cpp"        # <--- RISOLVE L0FactoryInit
 
-        # 4. TEST
-        "SEcube Host Libraries/examples/hostSideTest.cpp"
+        # 3. HOST LIBRARIES - LIVELLO L1 (Protocollo & ML-DSA Wrapper)
+        "${HOST_LIB_DIR}/L1/L1.cpp"
+        "${HOST_LIB_DIR}/L1/L1 Base/L1_base.cpp"
+        "${HOST_LIB_DIR}/L1/L1_login_logout.cpp"
+        "${HOST_LIB_DIR}/L1/L1_security.cpp"         # <--- RISOLVE CryptoInit, Encrypt, Decrypt
+        "${HOST_LIB_DIR}/L1/L1_sekey.cpp"            # <--- RISOLVE KeyList, Sign, Verify, Keygen
+
+        # 4. CRITTOGRAFIA HOST (Supporto al Login/Sessione)
+        "${HOST_LIB_DIR}/L1/Crypto Libraries/shake.c"
+        "${HOST_LIB_DIR}/L1/Crypto Libraries/Keccak.c"
+        "${HOST_LIB_DIR}/L1/Crypto Libraries/sha256.c"
+        "${HOST_LIB_DIR}/L1/Crypto Libraries/aes256.cpp"
+        "${HOST_LIB_DIR}/L1/Crypto Libraries/pbkdf2.c"
+
+        # 5. ENTRY POINT (Il test che stai compilando)
+        "SEcube Host Libraries/examples/dilithium_call.cpp"
+        #"SEcube Host Libraries/examples/FullDilithiumTest.cpp"
 )
 
-# --- DEFINIZIONI ---
-target_compile_definitions(SEcube_SDK PRIVATE
-        USE_CCRAM_SECTION
-        SIMULAZIONE_PC
-)
-
-find_package(OpenSSL REQUIRED)
-
-target_link_libraries(SEcube_SDK PRIVATE OpenSSL::Crypto)

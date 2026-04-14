@@ -18,6 +18,10 @@
  * */
 void ntt(int32_t *__restrict p);
 
+
+void invntt(int32_t *__restrict p);
+
+
 /**
  * @brief Esegue la Inverse NTT in-place con scaling finale. [cite: 2026-03-11]
  * @param p            Polinomio nel dominio NTT da riportare al dominio normale.

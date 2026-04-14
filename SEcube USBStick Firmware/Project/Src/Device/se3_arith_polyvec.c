@@ -6,12 +6,9 @@
 #define DIL_Q 8380417
 #define DIL_QINV 58728449
 
-/* Funzione inline per la riduzione Montgomery veloce a 64 bit usata in Pointwise_Acc */
-static inline int32_t internal_montgomery_reduce(int64_t a) {
-    int32_t t;
-    t = (int32_t)a * DIL_QINV;
-    t = (a - (int64_t)t * DIL_Q) >> 32;
-    return t;
+static inline __attribute__((always_inline)) int32_t internal_montgomery_reduce(int64_t a) {
+    int32_t t = (int32_t)a * (int32_t)DIL_QINV;
+    return (int32_t)((a - (int64_t)t * DIL_Q) >> 32);
 }
 
 /* ========================================================================== */
@@ -68,23 +65,29 @@ void polyvecl_pointwise_poly_montgomery(polyvecl *r, const poly *a, const polyve
     }
 }
 
-void polyvecl_pointwise_acc_montgomery(poly *w, const polyvecl *u, const polyvecl *v, const dilithium_conf_t *conf) {
-    unsigned int i, j;
-    for(i = 0; i < DIL_N; ++i) {
-        int64_t t = 0;
-        for(j = 0; j < conf->l; ++j) {
-            t += internal_montgomery_reduce((int64_t)u->vec[j].coeffs[i] * v->vec[j].coeffs[i]);
-        }
-
-        // --- INIZIO FIX ---
-        // Riduzione modulare assoluta: blocca l'accumulo fuori range!
-        t %= DIL_Q;
-        if (t < 0) {
-            t += DIL_Q;
-        }
-        // --- FINE FIX ---
-
-        w->coeffs[i] = (int32_t)t;
+void polyvecl_pointwise_acc_montgomery(poly * __restrict__ w,
+                                       const polyvecl * __restrict__ u,
+                                       const polyvecl * __restrict__ v,
+                                       const dilithium_conf_t *conf)
+{
+    int64_t t[DIL_N];
+    {
+        const int32_t * __restrict__ uc = u->vec[0].coeffs;
+        const int32_t * __restrict__ vc = v->vec[0].coeffs;
+        for (unsigned int i = 0; i < DIL_N; ++i)
+            t[i] = (int64_t)uc[i] * vc[i];
+    }
+    for (unsigned int j = 1; j < conf->l; ++j) {
+        const int32_t * __restrict__ uc = u->vec[j].coeffs;
+        const int32_t * __restrict__ vc = v->vec[j].coeffs;
+        for (unsigned int i = 0; i < DIL_N; ++i)
+            t[i] += (int64_t)uc[i] * vc[i];
+    }
+    int32_t * __restrict__ wc = w->coeffs;
+    for (unsigned int i = 0; i < DIL_N; ++i) {
+        int32_t res = internal_montgomery_reduce(t[i]);
+        res += (res >> 31) & DIL_Q;
+        wc[i] = res;
     }
 }
 
@@ -173,10 +176,8 @@ void polyveck_pointwise_poly_montgomery(polyveck *r, const poly *a, const polyve
 }
 
 int polyveck_chknorm(const polyveck *v, int32_t bound, const dilithium_conf_t *conf) {
-    if (conf == NULL || v == NULL) return 1;
-    unsigned int i;
     uint32_t t = 0;
-    for(i = 0; i < conf->k; ++i) {
+    for(unsigned int i = 0; i < conf->k; ++i) {
         t |= (uint32_t)poly_chknorm(&v->vec[i], bound);
     }
     return (t != 0) ? 1 : 0;

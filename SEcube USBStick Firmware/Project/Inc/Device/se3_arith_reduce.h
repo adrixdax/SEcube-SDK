@@ -37,12 +37,11 @@ static inline int32_t barrett_reduce(int32_t a) {
 
 /* Riduzione a 32-bit (sfrutta istruzione MLS del Cortex-M4) */
 __attribute__((always_inline)) static inline int32_t reduce32(int32_t a) {
-    int32_t t = (a + 4194304) >> 23;
+    int32_t t = (int32_t)(((uint32_t)a + 4194304U) >> 23);
     int32_t r = a - t * DIL_Q;
-    // Porta da [-Q/2, Q/2] → [0, Q-1] (constant-time)
-    r += (r >> 31) & DIL_Q;        // se negativo aggiunge Q
+    r += (r >> 31) & DIL_Q;
     r -= DIL_Q;
-    r += (r >> 31) & DIL_Q;        // se >= Q, sottrae Q
+    r += (r >> 31) & DIL_Q;
     return r;
 }
 
@@ -76,7 +75,7 @@ static inline uint32_t constant_time_select_int(uint32_t mask, uint32_t a, uint3
 }
 
 /* --- Rounding di un singolo coefficiente --- */
-static uint32_t power2round(int32_t *a0, int32_t a) {
+static inline  __attribute__((always_inline)) uint32_t power2round(int32_t *a0, int32_t a) {
     int32_t a1;
     a1 = (a + (1 << (DIL_D-1))) >> DIL_D;
     *a0 = a - (a1 << DIL_D);
@@ -88,12 +87,12 @@ static uint32_t power2round(int32_t *a0, int32_t a) {
  * ========================================================================= */
 static inline int32_t decompose(int32_t *a0, int32_t a, int32_t gamma2) {
     int32_t a1;
-    a1 = (a + 127) >> 7;
+    a1 = (int32_t)(((uint32_t)a + 127U) >> 7);
     if (gamma2 == (DIL_Q - 1) / 88) {
-        a1  = (a1 * 11275 + (1 << 23)) >> 24;
+        a1  = (int32_t)(((uint32_t)(a1 * 11275) + (1U << 23)) >> 24);
         a1 ^= ((43 - a1) >> 31) & a1;
     } else {
-        a1  = (a1 * 1025 + (1 << 21)) >> 22;
+        a1  = (int32_t)(((uint32_t)(a1 * 1025) + (1U << 21)) >> 22);
         a1 &= 15;
     }
     *a0  = a - a1 * 2 * gamma2;

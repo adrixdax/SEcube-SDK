@@ -404,4 +404,3 @@ uint16_t se3_dilithium_ctx_validate(const se3_dilithium_ctx* ctx);
  *   }
  *
  * ========================================================================== */
-

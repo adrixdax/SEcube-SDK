@@ -748,68 +748,63 @@ void L1::L1_ML_DSA_Keygen(uint16_t level, std::vector<uint8_t>& pk, std::vector<
 // 🔧 CORRETTO: L1_ML_DSA_Sign - Invia SK in d1, Message in d2 al FINIT
 
 void L1::L1_ML_DSA_Sign(uint16_t level,
-                   const std::vector<uint8_t>& msg,
-                   const std::vector<uint8_t>& sk,
-                   std::vector<uint8_t>& signature,
-                   const std::vector<uint8_t>& ctx)
+				   const std::vector<uint8_t>& msg,
+				   const std::vector<uint8_t>& sk,
+				   std::vector<uint8_t>& signature,
+				   const std::vector<uint8_t>& ctx)
 {
-    const size_t L1_SAFE_CHUNK = 800; // Limite hardware USB del SEcube
-    uint32_t sessId = 0;
+	const size_t L1_SAFE_CHUNK = 800; // Limite hardware USB del SEcube
+	uint32_t sessId = 0;
 
-    uint16_t algo_id =
-       (level == 2 ? L1Algorithms::Algorithms::ML_DSA_44_SIGN :
-        level == 3 ? L1Algorithms::Algorithms::ML_DSA_65_SIGN :
-                     L1Algorithms::Algorithms::ML_DSA_87_SIGN);
+	uint16_t algo_id =
+	   (level == 2 ? L1Algorithms::Algorithms::ML_DSA_44_SIGN :
+		level == 3 ? L1Algorithms::Algorithms::ML_DSA_65_SIGN :
+					 L1Algorithms::Algorithms::ML_DSA_87_SIGN);
 
-    // Inizializza la sessione sul chip
-    L1CryptoInit(algo_id, 0, L1Key::Id::NULL_ID, sessId);
+	// Inizializza la sessione sul chip
+	L1CryptoInit(algo_id, 0, L1Key::Id::NULL_ID, sessId);
 
-    // 🔹 1. CARICAMENTO SK (Suddiviso in chunk per non saturare l'HSM)
-    for (size_t i = 0; i < sk.size(); i += L1_SAFE_CHUNK) {
-       size_t chunk = std::min(L1_SAFE_CHUNK, sk.size() - i);
+	// 🔹 1. CARICAMENTO SK (Suddiviso in chunk su d1)
+	for (size_t i = 0; i < sk.size(); i += L1_SAFE_CHUNK) {
+		size_t chunk = std::min(L1_SAFE_CHUNK, sk.size() - i);
 
-       // Variabili fittizie (dummy) allocate sullo stack per ingannare le protezioni
-       // dell'API C che rifiutano di trasmettere se i puntatori di output sono nullptr.
-       uint16_t dummy_out_len = 0;
-       std::array<uint8_t, 16> dummy_out;
+		uint16_t dummy_out_len = 0;
+		std::array<uint8_t, 16> dummy_out;
 
-       L1CryptoUpdate(
-          sessId,
-          0, // Nessun flag FINIT, stiamo solo accumulando la chiave in d1
-          static_cast<uint16_t>(chunk), const_cast<uint8_t*>(sk.data() + i),
-          0, nullptr,
-          &dummy_out_len,
-          dummy_out.data()
-       );
-    }
+		L1CryptoUpdate(
+		   sessId,
+		   0,
+		   static_cast<uint16_t>(chunk), const_cast<uint8_t*>(sk.data() + i), // SK viaggia in d1
+		   0, nullptr,
+		   &dummy_out_len,
+		   dummy_out.data()
+		);
+	}
 
-    // 🔹 2. CHIAMATA FINALE (FINIT)
-    // Inviamo il msg crudo. Il dominio (0x00, 0x00) viene aggiunto dal firmware C!
-    uint16_t outLen = 0;
+	// 🔹 2. CHIAMATA FINALE (FINIT)
+	uint16_t outLen = 0;
+	uint16_t expected_sig_len = (level == 2 ? 2420 : level == 3 ? 3309 : 4627);
+	signature.resize(expected_sig_len);
 
-    // Pre-allochiamo la dimensione esatta attesa per evitare sprechi di RAM
-    uint16_t expected_sig_len = (level == 2 ? 2420 : level == 3 ? 3309 : 4627);
-    signature.resize(expected_sig_len);
+	// FIX: Anche il messaggio deve viaggiare in d1 per essere concatenato alla SK nel firmware!
+	L1CryptoUpdate(
+	   sessId,
+	   L1Crypto::UpdateFlags::FINIT,
+	   static_cast<uint16_t>(msg.size()), const_cast<uint8_t*>(msg.data()), // IL MESSAGGIO ORA È IN d1
+	   0, nullptr, // d2 ora è vuoto
+	   &outLen,
+	   signature.data()
+	);
 
-    L1CryptoUpdate(
-       sessId,
-       L1Crypto::UpdateFlags::FINIT,
-       0, nullptr, // Nessun dato in d1 per questo step
-       static_cast<uint16_t>(msg.size()), const_cast<uint8_t*>(msg.data()), // Il messaggio viaggia in d2
-       &outLen,
-       signature.data()
-    );
-
-    // Tronca il vettore alla dimensione reale restituita dall'HSM
-    signature.resize(outLen);
+	// Tronca il vettore alla dimensione reale restituita dall'HSM
+	signature.resize(outLen);
 }
-
 bool L1::L1_ML_DSA_Verify(uint16_t level, const std::vector<uint8_t>& msg,
                           const std::vector<uint8_t>& signature,
                           const std::vector<uint8_t>& pk,
                           const std::vector<uint8_t>& ctx) {
 
-    const size_t L1_SAFE_CHUNK = 800; // Limite sicuro per evitare l'errore di sessione
+    const size_t L1_SAFE_CHUNK = 800; // Multiplo di 16, perfetto per l'USB
 
     uint32_t sessId = 0;
     uint16_t algo_id = (level == 2 ? L1Algorithms::Algorithms::ML_DSA_44_VERIFY :
@@ -818,41 +813,36 @@ bool L1::L1_ML_DSA_Verify(uint16_t level, const std::vector<uint8_t>& msg,
 
     L1CryptoInit(algo_id, 0, L1Key::Id::NULL_ID, sessId);
 
-    // 🔹 1. CARICAMENTO PUBLIC KEY A PEZZI (d2)
-    for (size_t i = 0; i < pk.size(); i += L1_SAFE_CHUNK) {
-        size_t chunk = std::min(L1_SAFE_CHUNK, pk.size() - i);
-        // Inviamo la PK nel secondo buffer (data2/i2)
-        L1CryptoUpdate(sessId, 0, 0, nullptr, (uint16_t)chunk, const_cast<uint8_t*>(pk.data() + i), nullptr, nullptr);
-    }
+    // IL SEGRETO: Assembliamo un treno merci unico per evitare padding intermedi!
+    std::vector<uint8_t> payload;
+    payload.reserve(pk.size() + signature.size() + msg.size());
+    payload.insert(payload.end(), pk.begin(), pk.end());
+    payload.insert(payload.end(), signature.begin(), signature.end());
+    payload.insert(payload.end(), msg.begin(), msg.end());
 
-    // 🔹 2. PREPARAZIONE MESSAGGIO FIPS 204
-    // Struttura attesa dal firmware: [L_ctx (1 byte)] || [ctx...] || [message...]
-    std::vector<uint8_t> full_msg;
-    full_msg.push_back(static_cast<uint8_t>(ctx.size())); // Sarà 0 per la firma di Alice senza contesto
-    if (!ctx.empty()) {
-        full_msg.insert(full_msg.end(), ctx.begin(), ctx.end());
-    }
-    full_msg.insert(full_msg.end(), msg.begin(), msg.end());
-
-    // 🔹 3. CARICAMENTO FIRMA A PEZZI (d1) E TRIGGER FINALE
+    uint16_t dummy_out_len = 0;
+    std::array<uint8_t, 16> dummy_out;
     uint16_t outLen = 0;
-    std::vector<uint8_t> result(1, 1); // Default FAIL
+    std::vector<uint8_t> result(1, 1); // 1 byte, default 1 = FAIL
 
-    for (size_t i = 0; i < signature.size(); i += L1_SAFE_CHUNK) {
-        size_t chunk = std::min(L1_SAFE_CHUNK, signature.size() - i);
-        bool is_last = (i + chunk >= signature.size());
+    // Inviamo il mega-vettore a tranci di 800 byte (che il driver L0 non corromperà)
+    for (size_t i = 0; i < payload.size(); i += L1_SAFE_CHUNK) {
+        size_t chunk = std::min(L1_SAFE_CHUNK, payload.size() - i);
+        bool is_last = (i + chunk >= payload.size());
 
-        // La firma viene inviata nel primo buffer (data1/i1)
         L1CryptoUpdate(
             sessId,
             is_last ? L1Crypto::UpdateFlags::FINIT : 0,
-            static_cast<uint16_t>(chunk), const_cast<uint8_t*>(signature.data() + i), // d1: Firma chunked
-            is_last ? static_cast<uint16_t>(full_msg.size()) : 0,
-            is_last ? full_msg.data() : nullptr,                                     // d2: Messaggio (solo alla fine)
-            is_last ? &outLen : nullptr,
-            is_last ? result.data() : nullptr
+            static_cast<uint16_t>(chunk), const_cast<uint8_t*>(payload.data() + i), // Tutto in d1
+            0, nullptr,
+            is_last ? &outLen : &dummy_out_len,
+            is_last ? result.data() : dummy_out.data()
         );
     }
+
+    std::cout << "[DEBUG L1] Verify Payload Totale: " << payload.size()
+              << " bytes | outLen: " << outLen
+              << " | result[0]: " << (int)result[0] << std::endl;
 
     return (outLen > 0 && result[0] == 0);
 }

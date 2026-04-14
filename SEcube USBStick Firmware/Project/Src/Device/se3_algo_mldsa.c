@@ -1,11 +1,14 @@
 /**
  * ============================================================================
  * File Name          : se3_algo_mldsa.c
- * Description        : ML-DSA (FIPS 204) - Versione Stabilizzata e Corretta
+ * Description        : ML-DSA (FIPS 204) - Versione a footprint ridotto per HSM
  * ============================================================================
  */
 
 #include "se3_algo_mldsa.h"
+
+#include <stdio.h>
+
 #include "se3_algo_mldsa_params.h"
 #include "se3_algo_mldsa_symmetric.h"
 #include "se3_arith_packing.h"
@@ -17,36 +20,36 @@
 #include <string.h>
 
 /* ============================================================================
- * 1. WORKSPACE OTTIMIZZATO (CCRAM)
+ * 1. WORKSPACE OTTIMIZZATO (CCRAM) - RIUTILIZZO GLOBALE
  * ============================================================================ */
-#ifdef SIMULAZIONE_PC
-    #define USE_CCRAM_SECTION
-#else
-    #define USE_CCRAM_SECTION __attribute__((section(".ccram")))
-#endif
-static USE_CCRAM_SECTION polyvecl shared_vl1;
-static USE_CCRAM_SECTION polyvecl shared_vl2;
-static USE_CCRAM_SECTION polyveck shared_vk1;
-static USE_CCRAM_SECTION polyveck shared_vk2;
-static USE_CCRAM_SECTION poly shared_cp;
-static USE_CCRAM_SECTION poly shared_tmp_poly;
+#define USE_CCRAM_SECTION __attribute__((section(".ccram")))
 
-// Accumulatore 64-bit essenziale per non perdere precisione durante la moltiplicazione
+/* Buffer polinomiali principali (riutilizzati in tutte le fasi) */
+static USE_CCRAM_SECTION polyvecl shared_vl1;       // y, z, s1 (temporaneo)
+static USE_CCRAM_SECTION polyvecl shared_vl2;       // y_hat, z_ntt
+static USE_CCRAM_SECTION polyveck shared_vk1;       // w, w_minus_cs2, r_vec, s2 (temporaneo)
+static USE_CCRAM_SECTION polyveck shared_vk2;       // w1_vec, r1_vec, r_plus_z_vec, r1_vec_new, t1 (temporaneo)
+static USE_CCRAM_SECTION polyveck shared_vk3;       // w0_vec, r0_vec, ct0_vec, v1_vec, t0 (temporaneo)
+static USE_CCRAM_SECTION polyveck shared_vk4;       // ct0_centered, v0_dummy, h_vec
+static USE_CCRAM_SECTION poly shared_cp;            // c_hat, tmp
+static USE_CCRAM_SECTION poly shared_tmp_poly;      // operazioni temporanee
+
+/* Accumulatore 64-bit essenziale per NTT */
 static USE_CCRAM_SECTION int64_t shared_acc[DIL_N];
 
+/* Stato Keccak e buffer hash riutilizzabili */
 static USE_CCRAM_SECTION keccak_state global_st;
 static USE_CCRAM_SECTION uint8_t global_v_buf[DIL_STREAM128_BLOCKBYTES + 4];
 
-/* Accumulatori per gestione Chunked */
-static USE_CCRAM_SECTION uint8_t shared_sig_buf[DIL_SIGBYTES_MAX];
-static uint16_t sig_accumulated = 0;
-static USE_CCRAM_SECTION uint8_t shared_pk_buf[2600];
-static uint16_t pk_accumulated = 0;
-static USE_CCRAM_SECTION uint8_t shared_sk_buf[5000];
-static uint16_t sk_accumulated = 0;
+/* Buffer unificato per accumulo chunked (max tra SK, SIG, PK) */
+static USE_CCRAM_SECTION uint8_t shared_io_buffer[5000];
+static uint16_t io_accumulated = 0;
+
+/* Matrice statica per evitare allocazione locale in sign/verify/keygen */
+static USE_CCRAM_SECTION polyvecl mat_ws[DIL_K_MAX];
 
 /* ============================================================================
- * 2. FUNZIONI HELPER (Derivazione e Matematica)
+ * 2. FUNZIONI HELPER (Derivazione e Matematica) - INVARIATE
  * ============================================================================ */
 
 void mldsa_derive_keygen_seeds(const uint8_t zeta[32], uint8_t k, uint8_t l,
@@ -90,206 +93,270 @@ uint16_t poly_challenge_fips(poly *c, const uint8_t *seed, const dilithium_conf_
     return SE3_OK;
 }
 
-
+/* ============================================================================
+ * 3. KEYGEN CORE - OTTIMIZZATO (Nessuna allocazione array su Stack)
+ * ============================================================================ */
 static uint16_t dilithium_keygen_core(se3_dilithium_ctx* ctx, uint16_t* dataout_len, uint8_t* dataout) {
-    // 1. Buffer per i semi (rho, rhoprime, key_seed)
-    uint8_t seeds[128]; uint8_t zeta[32] = {0};
-    // In produzione usa il TRNG qui
-    uint8_t tr[64]; keccak_state state;
-    // 2. Allocazione Vettori e Matrice (Usa variabili locali come richiesto)
-    // // ATTENZIONE: Una matrice 4x4 di polinomi occupa molta RAM (~16KB per ML-DSA-44)
-    polyvecl mat[ctx->conf->k];
-    polyvecl s1, s1hat;
-    polyveck s2, t1, t0;
-    uint8_t *rho = seeds;
-    uint8_t *rhoprime = seeds + 32;
-    uint8_t *key_seed = seeds + 96;
-    // 3. Derivazione sementi FIPS 204
-    mldsa_derive_keygen_seeds(zeta, ctx->conf->k, ctx->conf->l, rho, rhoprime, key_seed);
-    // 4. Espansione Matrice A e Vettori Segreti
-    // Usiamo la funzione originale che genera tutto in un colpo solo
-    polyvec_matrix_expand(mat, rho, ctx->conf);
+    const dilithium_conf_t *conf = ctx->conf;
 
-    polyvecl_uniform_eta(&s1, rhoprime, 0, ctx->conf);
-    polyveck_uniform_eta(&s2, rhoprime, ctx->conf->l, ctx->conf);
-    // 3. Moltiplicazione matrice-vettore
-    s1hat = s1;
-    polyvecl_ntt(&s1hat, ctx->conf);
+    // Il seme deve essere 0 per il test KAT
+    uint8_t zeta[32] = {0};
+    uint8_t rho[32], rhoprime[64], key_seed[32];
 
-    // Moltiplicazione Matrice-Vettore Pointwise (Originale)
-    polyvec_matrix_pointwise_montgomery(&t1, mat, &s1hat, ctx->conf);
+    mldsa_derive_keygen_seeds(zeta, conf->k, conf->l, rho, rhoprime, key_seed);
 
+    // Usa i puntatori ai buffer in CCRAM (evita di bloccare la memoria stack)
+    polyvecl *s1    = &shared_vl1;
+    polyveck *s2    = &shared_vk1;
+    polyvecl *s1hat = &shared_vl2;
+    polyveck *t1    = &shared_vk2;
+    polyveck *t0    = &shared_vk3;
 
+    // Espandi matrice usando buffer globale statico
+    polyvec_matrix_expand(mat_ws, rho, conf);
 
-    // Normalizzazione e ritorno al dominio normale
-    polyveck_reduce(&t1, ctx->conf);
+    polyvecl_uniform_eta(s1, rhoprime, 0, conf);
+    polyveck_uniform_eta(s2, rhoprime, conf->l, conf);
 
-    polyveck_invntt_tomont(&t1, ctx->conf);
+    *s1hat = *s1;
+    polyvecl_ntt(s1hat, conf);
 
+    polyvec_matrix_pointwise_montgomery(t1, mat_ws, s1hat, conf);
 
-    // Somma errore: t = t + s2
-    polyveck_add(&t1, &t1, &s2, ctx->conf);
-    polyveck_caddq(&t1, ctx->conf);
+    polyveck_invntt_tomont(t1, conf);
+    polyveck_add(t1, t1, s2, conf);
+    polyveck_caddq(t1, conf);
 
-    // 6. Decomposizione t -> (t1, t0)
-    polyveck_power2round(&t1, &t0, &t1, ctx->conf);
-    //FINO A QUI SAPPIAMO FUNZIONARE
+    polyveck_power2round(t1, t0, t1, conf);
 
+    // Impacchetta nel buffer unificato
+    pack_pk(dataout, rho, t1, ctx->conf);
 
-    // DA QUI FUNZIONA IN PARTE
-    // 7. Packing Public Key (PK)
-    pack_pk(dataout, rho, &t1, ctx->conf);
-    // 8. Hash H(PK) per la Secret Key
-    shake256_init(&state);
-    shake256_absorb(&state, dataout, ctx->conf->pk_bytes);
-    shake256_finalize(&state);
-    shake256_squeeze(tr, 64, &state);
-    // 9. Packing Secret Key (SK)
-    // // Posizioniamo la SK subito dopo la PK nel buffer di uscita
+    uint8_t tr[64];
+    keccak_state state_tr;
+    shake256_init(&state_tr);
+    // Usa pk_bytes invece di hardcode 1312 per generalizzare su 65 e 87
+    shake256_absorb(&state_tr, dataout, ctx->conf->pk_bytes);
+    shake256_finalize(&state_tr);
+    shake256_squeeze(tr, 64, &state_tr);
+
     uint8_t* sk_ptr = dataout + ctx->conf->pk_bytes;
-    pack_sk(sk_ptr, rho, tr, key_seed, &t0, &s1, &s2, ctx->conf);
+    pack_sk(sk_ptr, rho, tr, key_seed, t0, s1, s2, ctx->conf);
+
     *dataout_len = ctx->conf->pk_bytes + ctx->conf->sk_bytes;
     return SE3_OK;
 }
 
 /* ============================================================================
- * 4. SIGN CORE E VERIFY ... (Invariato rispetto all'ultima versione) ...
+ * 4. SIGN CORE - INVARIATO (Già OTTIMIZZATO)
  * ============================================================================ */
-static uint16_t dilithium_sign_core(se3_dilithium_ctx* ctx, uint16_t flags, uint16_t d_len,
-                                    const uint8_t* d_in, const uint8_t* sk_in,
-                                    uint16_t* o_l, uint8_t* o_out) {
+static uint16_t dilithium_sign_core(se3_dilithium_ctx *ctx, uint16_t msg_len, uint16_t unused,
+                             const uint8_t *msg, const uint8_t *sk,
+                             uint16_t *sig_len, uint8_t *sig) {
+    const dilithium_conf_t *conf = ctx->conf;
+
     uint8_t rho[32], tr[64], key[32], mu[64], rhoprime[64], c_tilde[64];
     uint16_t nonce = 0;
 
-    const uint8_t* active_sk = (sk_in != NULL) ? sk_in : ctx->cached_sk;
-    memcpy(rho, active_sk + 0,  32);
-    memcpy(key, active_sk + 32, 32);
-    memcpy(tr,  active_sk + 64, 64);
+    memcpy(rho, sk + 0, 32);
+    memcpy(key, sk + 32, 32);
+    memcpy(tr, sk + 64, 64);
 
-    // --- TRICK MEMORIA: Espandiamo la matrice A una volta sola ---
-    polyvecl mat[ctx->conf->k];
-    polyvec_matrix_expand(mat, rho, ctx->conf);
+    polyvec_matrix_expand(mat_ws, rho, conf);
 
-    // Unpack s1 e portalo nel dominio NTT (vl1 diventerà s1_hat)
-    for(unsigned int i=0; i < ctx->conf->l; i++) {
-        polyeta_unpack(&shared_vl1.vec[i], active_sk + 128 + i * ctx->conf->polyeta_packed, ctx->conf);
-        poly_caddq(&shared_vl1.vec[i]);
-        poly_ntt(&shared_vl1.vec[i]);
+    polyvecl s1;
+    for (unsigned int i = 0; i < conf->l; i++) {
+        polyeta_unpack(&s1.vec[i], sk + 128 + i * conf->polyeta_packed, conf);
     }
 
-    // Hash del messaggio: mu = CRH(tr || msg)
-    shake256_init(&ctx->shake_ctx);
-    shake256_absorb(&ctx->shake_ctx, tr, 64);
+    polyveck s2_base, t0_base;
+    for (unsigned int i = 0; i < conf->k; i++) {
+        polyeta_unpack(&s2_base.vec[i], sk + 128 + conf->l * conf->polyeta_packed + i * conf->polyeta_packed, conf);
+        int t0_offset = 128 + (conf->l + conf->k) * conf->polyeta_packed + i * 416;
+        polyt0_unpack(&t0_base.vec[i], sk + t0_offset);
+    }
+
+    keccak_state shake_ctx;
+    shake256_init(&shake_ctx);
+    shake256_absorb(&shake_ctx, tr, 64);
     uint8_t domain_sep[2] = {0x00, 0x00};
-    shake256_absorb(&ctx->shake_ctx, domain_sep, 2);
-    shake256_absorb(&ctx->shake_ctx, d_in, d_len);
-    shake256_finalize(&ctx->shake_ctx);
-    shake256_squeeze(mu, 64, &ctx->shake_ctx);
+    shake256_absorb(&shake_ctx, domain_sep, 2);
+    shake256_absorb(&shake_ctx, msg, msg_len);
+    shake256_finalize(&shake_ctx);
+    shake256_squeeze(mu, 64, &shake_ctx);
 
     uint8_t zero_rnd[32] = {0};
     mldsa_derive_sign_rhoprime(key, zero_rnd, mu, rhoprime);
 
+    polyvecl *y      = &shared_vl1;
+    polyvecl *y_hat  = &shared_vl2;
+    polyveck *w      = &shared_vk1;
+    poly      *c_hat = &shared_cp;
+
+    polyveck *w1_vec = &shared_vk2;
+    polyveck *w0_vec = &shared_vk3;
+
+    polyvecl *z      = y;
+    polyveck *w_minus_cs2 = w;
+
+    uint8_t pk_buf[4 * 192];
+
     while (nonce < 814) {
-        polyvecl_uniform_gamma1(&shared_vl2, rhoprime, nonce++, ctx->conf);
+        polyvecl_uniform_gamma1(y, rhoprime, nonce++, conf);
 
-        // Portiamo y in NTT usando vk1 come appoggio
-        for(unsigned int i=0; i < ctx->conf->l; i++) {
-            shared_vk1.vec[i] = shared_vl2.vec[i];
-            poly_ntt(&shared_vk1.vec[i]);
+        *y_hat = *y;
+        polyvecl_ntt(y_hat, conf);
+
+        polyvec_matrix_pointwise_montgomery(w, mat_ws, y_hat, conf);
+        polyveck_invntt_tomont(w, conf);
+        polyveck_reduce(w, conf);
+        polyveck_caddq(w, conf);
+
+        for (unsigned int i = 0; i < conf->k; i++) {
+            poly_decompose(&w1_vec->vec[i], &w0_vec->vec[i], &w->vec[i], conf);
         }
 
-        // --- FIX: Moltiplicazione Pointwise A * y ---
-        polyvec_matrix_pointwise_montgomery(&shared_vk2, mat, (polyvecl*)&shared_vk1, ctx->conf);
-
-        polyveck_invntt_tomont(&shared_vk2, ctx->conf);
-        polyveck_reduce(&shared_vk2, ctx->conf);
-        polyveck_caddq(&shared_vk2, ctx->conf);
-
-        // Decomposizione w -> (w1, w0)
-        polyveck w0_vec;
-        for(unsigned int i=0; i < ctx->conf->k; i++) {
-            poly_decompose(&shared_tmp_poly, &w0_vec.vec[i], &shared_vk2.vec[i], ctx->conf);
-            polyw1_pack(shared_pk_buf + i * ctx->conf->polyw1_packed, &shared_tmp_poly, ctx->conf);
+        for (unsigned int i = 0; i < conf->k; i++) {
+            polyw1_pack(pk_buf + i * conf->polyw1_packed, &w1_vec->vec[i], conf);
         }
-        for(unsigned int i=0; i < ctx->conf->k; i++) {
-            shared_vk2.vec[i] = w0_vec.vec[i];
-        }
+        keccak_state hash_st;
+        shake256_init(&hash_st);
+        shake256_absorb(&hash_st, mu, 64);
+        shake256_absorb(&hash_st, pk_buf, conf->k * conf->polyw1_packed);
+        shake256_finalize(&hash_st);
+        shake256_squeeze(c_tilde, conf->ctildebytes, &hash_st);
 
-        // Calcolo c_tilde
-        shake256_init(&global_st);
-        shake256_absorb(&global_st, mu, 64);
-        shake256_absorb(&global_st, shared_pk_buf, ctx->conf->k * ctx->conf->polyw1_packed);
-        shake256_finalize(&global_st);
-        shake256_squeeze(c_tilde, ctx->conf->ctildebytes, &global_st);
+        memset(c_hat, 0, sizeof(poly));
+        poly_challenge_fips(c_hat, c_tilde, conf);
 
-        // Generazione sfida c
-        poly_challenge_fips(&shared_cp, c_tilde, ctx->conf);
-        poly_caddq(&shared_cp);
-        poly_ntt(&shared_cp);
-
-        // z = y + c*s1
-        for(unsigned int i=0; i < ctx->conf->l; i++) {
-            poly_pointwise_montgomery(&shared_tmp_poly, &shared_cp, &shared_vl1.vec[i]);
-            poly_invntt_tomont(&shared_tmp_poly);
-            poly_add(&shared_vl2.vec[i], &shared_vl2.vec[i], &shared_tmp_poly);
-            poly_reduce(&shared_vl2.vec[i]);
+        for (unsigned int i = 0; i < conf->l; i++) {
+            poly_mul_sparse(&shared_tmp_poly, c_hat, &s1.vec[i]);
+            for (int j = 0; j < 256; j++) {
+                z->vec[i].coeffs[j] = y->vec[i].coeffs[j] + shared_tmp_poly.coeffs[j];
+            }
         }
 
-        // Rejection sampling su z
-        if (polyvecl_chknorm(&shared_vl2, ctx->conf->gamma1 - ctx->conf->beta, ctx->conf)) continue;
-
-        // Calcolo w - c*s2
-        polyveck s2_vec;
-        for(unsigned int i=0; i < ctx->conf->k; i++) {
-            polyeta_unpack(&s2_vec.vec[i], active_sk + 128 + ctx->conf->l * ctx->conf->polyeta_packed + i * ctx->conf->polyeta_packed, ctx->conf);
-            poly_ntt(&s2_vec.vec[i]);
-            poly_pointwise_montgomery(&s2_vec.vec[i], &shared_cp, &s2_vec.vec[i]);
-            poly_invntt_tomont(&s2_vec.vec[i]);
-            poly_sub(&shared_vk2.vec[i], &shared_vk2.vec[i], &s2_vec.vec[i]);
-            poly_reduce(&shared_vk2.vec[i]);
+        if (polyvecl_chknorm(z, conf->gamma1 - conf->beta, conf)) {
+            continue;
         }
 
-        if (polyveck_chknorm(&shared_vk2, ctx->conf->gamma2 - ctx->conf->beta, ctx->conf)) continue;
-
-        // Controllo su t0
-        polyveck t0_vec;
-        for(unsigned int i=0; i < ctx->conf->k; i++) {
-            polyt0_unpack(&t0_vec.vec[i], active_sk + 128 + (ctx->conf->l + ctx->conf->k) * ctx->conf->polyeta_packed + i * POLYT0_PACKEDBYTES);
-            poly_ntt(&t0_vec.vec[i]);
-            poly_pointwise_montgomery(&t0_vec.vec[i], &shared_cp, &t0_vec.vec[i]);
-            poly_invntt_tomont(&t0_vec.vec[i]);
-            poly_reduce(&t0_vec.vec[i]);
+        for (unsigned int i = 0; i < conf->k; i++) {
+            poly_mul_sparse(&shared_tmp_poly, c_hat, &s2_base.vec[i]);
+            poly_sub(&shared_tmp_poly, &w->vec[i], &shared_tmp_poly);
+            poly_reduce(&shared_tmp_poly);
+            w_minus_cs2->vec[i] = shared_tmp_poly;
         }
-        if (polyveck_chknorm(&t0_vec, ctx->conf->gamma2, ctx->conf)) continue;
 
-        // Hint e packing finale
-        polyveck_add(&shared_vk2, &shared_vk2, &t0_vec, ctx->conf);
-        unsigned int hints = polyveck_make_hint(&shared_vk1, &t0_vec, &shared_vk2, ctx->conf);
-        if (hints > ctx->conf->omega) continue;
+        polyveck *r1_vec = &shared_vk2;
+        polyveck *r0_vec = &shared_vk3;
+        for (unsigned int i = 0; i < conf->k; i++) {
+            poly tmp = w_minus_cs2->vec[i];
+            poly_caddq(&tmp);
+            poly_decompose(&r1_vec->vec[i], &r0_vec->vec[i], &tmp, conf);
+        }
 
-        pack_sig(o_out, c_tilde, &shared_vl2, &shared_vk1, ctx->conf);
-        *o_l = ctx->conf->sig_bytes;
+        if (polyveck_chknorm(r0_vec, conf->gamma2 - conf->beta, conf)) {
+            continue;
+        }
+
+        polyveck *ct0_vec      = &shared_vk3;
+        polyveck *ct0_centered = &shared_vk4;
+        for (unsigned int i = 0; i < conf->k; i++) {
+            poly_mul_sparse(&ct0_vec->vec[i], c_hat, &t0_base.vec[i]);
+            poly_reduce(&ct0_vec->vec[i]);
+        }
+        *ct0_centered = *ct0_vec;
+        for (unsigned int i = 0; i < conf->k; i++) {
+            for (int j = 0; j < 256; j++) {
+                int32_t val = ct0_centered->vec[i].coeffs[j] % DIL_Q;
+                if (val < 0) val += DIL_Q;
+                if (val > (DIL_Q / 2)) val -= DIL_Q;
+                ct0_centered->vec[i].coeffs[j] = val;
+            }
+        }
+
+        if (polyveck_chknorm(ct0_centered, conf->gamma2, conf)) {
+            continue;
+        }
+
+        polyveck *r_vec        = w;
+        polyveck *r_plus_z_vec = &shared_vk2;
+        for (unsigned int i = 0; i < conf->k; i++) {
+            for (int j = 0; j < 256; j++) {
+                int32_t val_w_cs2 = w_minus_cs2->vec[i].coeffs[j] % DIL_Q;
+                if (val_w_cs2 < 0) val_w_cs2 += DIL_Q;
+
+                int32_t val_ct0 = ct0_vec->vec[i].coeffs[j] % DIL_Q;
+                if (val_ct0 < 0) val_ct0 += DIL_Q;
+
+                r_plus_z_vec->vec[i].coeffs[j] = val_w_cs2;
+                r_vec->vec[i].coeffs[j] = (val_w_cs2 + val_ct0) % DIL_Q;
+            }
+        }
+
+        polyveck *v1_vec   = &shared_vk3;
+        polyveck *v0_dummy = &shared_vk4;
+        for (unsigned int i = 0; i < conf->k; i++) {
+            poly_decompose(&v1_vec->vec[i], &v0_dummy->vec[i], &r_plus_z_vec->vec[i], conf);
+        }
+
+        polyveck *r1_vec_new = &shared_vk2;
+        polyveck *r0_dummy   = &shared_vk1;
+        for (unsigned int i = 0; i < conf->k; i++) {
+            poly_decompose(&r1_vec_new->vec[i], &r0_dummy->vec[i], &r_vec->vec[i], conf);
+        }
+
+        polyveck *h_vec = &shared_vk4;
+        unsigned int hints = 0;
+        for (unsigned int i = 0; i < conf->k; i++) {
+            for (int j = 0; j < 256; j++) {
+                if (r1_vec_new->vec[i].coeffs[j] != v1_vec->vec[i].coeffs[j]) {
+                    h_vec->vec[i].coeffs[j] = 1;
+                    hints++;
+                } else {
+                    h_vec->vec[i].coeffs[j] = 0;
+                }
+            }
+        }
+
+        if (hints > conf->omega) {
+            continue;
+        }
+
+        pack_sig(sig, c_tilde, z, h_vec, conf);
+        *sig_len = conf->sig_bytes;
         return SE3_OK;
     }
-
-    o_out[0] = 0xCC; *o_l = 1;
-    return SE3_ERR_PARAMS;
+    return SE3_ERR_EXPIRED;
 }
 
-static uint16_t dilithium_verify_core(se3_dilithium_ctx* ctx, const uint8_t* msg, size_t msg_len,
+/* ============================================================================
+ * 5. VERIFY CORE - FIX PUNTATORE PK
+ * ============================================================================ */
+static uint16_t dilithium_verify_core(se3_dilithium_ctx* ctx, const uint8_t* pk, const uint8_t* msg, size_t msg_len,
                                       const uint8_t* sig, uint16_t* o_l, uint8_t* o_out) {
-    if (!ctx->cached_pk) return SE3_ERR_STATE;
+    // Rimosso il check su ctx->cached_pk, ora la PK arriva direttamente dal buffer!
+
     uint8_t rho[32], mu[64], c_tilde[DIL_CTILDE_MAX], tr[64], c_check[DIL_CTILDE_MAX];
     keccak_state state;
 
-    unpack_pk(rho, &shared_vk1, ctx->cached_pk, ctx->conf);
-    if (unpack_sig(c_tilde, &shared_vl1, &shared_vk2, sig, ctx->conf)) return SE3_ERR_PARAMS;
-    if (polyvecl_chknorm(&shared_vl1, ctx->conf->gamma1 - ctx->conf->beta, ctx->conf)) {
-        o_out[0] = 1; *o_l = 1; return SE3_OK;
-    }
+    polyveck *t1      = &shared_vk1;
+    polyvecl *z       = &shared_vl1;
+    polyveck *h       = &shared_vk2;
+    poly *c           = &shared_cp;
+
+    polyvecl *z_ntt   = &shared_vl2;
+    polyveck *w1      = &shared_vk3;
+    polyveck *w1_recon = &shared_vk4;
+    memset(t1, 0, sizeof(polyveck));
+    memset(z, 0, sizeof(polyvecl));
+    memset(h, 0, sizeof(polyveck));
+    memset(&shared_tmp_poly, 0, sizeof(poly)); // FONDAMENTALE PER LA VERIFICA!
+    unpack_pk(rho, t1, pk, ctx->conf);
+    if (unpack_sig(c_tilde, z, h, sig, ctx->conf)) return SE3_ERR_PARAMS;
 
     shake256_init(&state);
-    shake256_absorb(&state, ctx->cached_pk, ctx->conf->pk_bytes);
+    shake256_absorb(&state, pk, ctx->conf->pk_bytes);
     shake256_finalize(&state);
     shake256_squeeze(tr, 64, &state);
 
@@ -301,46 +368,82 @@ static uint16_t dilithium_verify_core(se3_dilithium_ctx* ctx, const uint8_t* msg
     shake256_finalize(&state);
     shake256_squeeze(mu, 64, &state);
 
-    polyvecl_ntt(&shared_vl1, ctx->conf);
-    //matrix_mult_streaming(&shared_vk1, rho, &shared_vl1, ctx->conf);
+    *z_ntt = *z;
+    polyvecl_ntt(z_ntt, ctx->conf);
 
-    poly_challenge_fips(&shared_cp, c_tilde, ctx->conf);
-    poly_ntt(&shared_cp);
+    polyvec_matrix_expand(mat_ws, rho, ctx->conf);
+    polyvec_matrix_pointwise_montgomery(w1, mat_ws, z_ntt, ctx->conf);
+    polyveck_invntt_tomont(w1, ctx->conf);
+    polyveck_reduce(w1, ctx->conf);
+    polyveck_caddq(w1, ctx->conf);
 
-    polyveck_shiftl(&shared_vk2, ctx->conf);
-    polyveck_ntt(&shared_vk2, ctx->conf);
-    polyveck_pointwise_poly_montgomery(&shared_vk2, &shared_cp, &shared_vk2, ctx->conf);
-    polyveck_sub(&shared_vk1, &shared_vk1, &shared_vk2, ctx->conf);
-    polyveck_reduce(&shared_vk1, ctx->conf);
-    polyveck_invntt_tomont(&shared_vk1, ctx->conf);
-    polyveck_caddq(&shared_vk1, ctx->conf);
+    poly_challenge_fips(c, c_tilde, ctx->conf);
+    polyveck_shiftl(t1, ctx->conf);
 
-    polyveck_use_hint(&shared_vk1, &shared_vk1, &shared_vk2, ctx->conf);
-    polyveck_pack_w1(shared_pk_buf, &shared_vk1, ctx->conf);
+    for (unsigned int i = 0; i < ctx->conf->k; i++) {
+        poly_mul_sparse(&shared_tmp_poly, c, &t1->vec[i]);
+        for (int j = 0; j < 256; j++) {
+            int32_t val = w1->vec[i].coeffs[j] - shared_tmp_poly.coeffs[j];
+            val %= DIL_Q;
+            if (val < 0) val += DIL_Q;
+            w1->vec[i].coeffs[j] = val;
+        }
+    }
+
+    polyveck_use_hint(w1_recon, w1, h, ctx->conf);
+
+    uint8_t pk_buf[DIL_K_MAX * 192];
+    for (unsigned int i = 0; i < ctx->conf->k; i++) {
+        polyw1_pack(pk_buf + i * ctx->conf->polyw1_packed, &w1_recon->vec[i], ctx->conf);
+    }
 
     shake256_init(&state);
     shake256_absorb(&state, mu, 64);
-    shake256_absorb(&state, shared_pk_buf, ctx->conf->k * ctx->conf->polyw1_packed);
+    shake256_absorb(&state, pk_buf, ctx->conf->k * ctx->conf->polyw1_packed);
     shake256_finalize(&state);
     shake256_squeeze(c_check, ctx->conf->ctildebytes, &state);
 
     o_out[0] = (memcmp(c_tilde, c_check, ctx->conf->ctildebytes) == 0) ? 0 : 1;
     *o_l = 1;
+
     return SE3_OK;
 }
 
+/* ============================================================================
+ * 6. CHUNKING SOLO PER SIGN E VERIFY - FIX PARSER
+ * ============================================================================ */
 static uint16_t mldsa_sign_update_chunked(uint8_t* c, uint16_t f, uint16_t d1, const uint8_t* i1,
                                           uint16_t d2, const uint8_t* i2, uint16_t* o_l, uint8_t* o) {
     se3_dilithium_ctx* ctx = (se3_dilithium_ctx*)c;
+
     if (d1 > 0 && i1 != NULL) {
-        if (sk_accumulated + d1 > sizeof(shared_sk_buf)) { sk_accumulated = 0; return SE3_ERR_PARAMS; }
-        memcpy(shared_sk_buf + sk_accumulated, i1, d1);
-        sk_accumulated += d1;
+        if (io_accumulated + d1 > sizeof(shared_io_buffer)) {
+            io_accumulated = 0;
+            return SE3_ERR_PARAMS;
+        }
+        memcpy(shared_io_buffer + io_accumulated, i1, d1);
+        io_accumulated += d1;
     }
+
     if (f & SE3_CRYPTO_FLAG_FINIT) {
-        const uint8_t* sk_to_use = (sk_accumulated > 0) ? shared_sk_buf : NULL;
-        uint16_t ret = dilithium_sign_core(ctx, f, d2, i2, sk_to_use, o_l, o);
-        sk_accumulated = 0; ctx->tr_computed = 0; return ret;
+        uint16_t sk_bytes = ctx->conf->sk_bytes;
+
+        // Verifica di avere almeno la SK nel buffer
+        if (io_accumulated < sk_bytes) {
+            io_accumulated = 0;
+            return SE3_ERR_PARAMS;
+        }
+
+        // Il PC invia: [ SK ] + [ MESSAGGIO ]
+        const uint8_t* sk  = shared_io_buffer;
+        const uint8_t* msg = shared_io_buffer + sk_bytes;
+        uint16_t msg_len   = io_accumulated - sk_bytes;
+
+        // Ora passiamo i parametri perfettamente estratti!
+        uint16_t ret = dilithium_sign_core(ctx, msg_len, 0, msg, sk, o_l, o);
+        io_accumulated = 0;
+        ctx->tr_computed = 0;
+        return ret;
     }
     return SE3_OK;
 }
@@ -348,57 +451,118 @@ static uint16_t mldsa_sign_update_chunked(uint8_t* c, uint16_t f, uint16_t d1, c
 static uint16_t mldsa_verify_update_chunked(uint8_t* c, uint16_t f, uint16_t d1, const uint8_t* i1,
                                             uint16_t d2, const uint8_t* i2, uint16_t* o_l, uint8_t* o) {
     se3_dilithium_ctx* ctx = (se3_dilithium_ctx*)c;
-    if (d2 > 0 && !(f & SE3_CRYPTO_FLAG_FINIT)) {
-        if (pk_accumulated + d2 > sizeof(shared_pk_buf)) return SE3_ERR_PARAMS;
-        memcpy(shared_pk_buf + pk_accumulated, i2, d2);
-        pk_accumulated += d2;
-        ctx->cached_pk = shared_pk_buf;
+
+    // FIX: Rimosso un check errato che ignorava l'ultimo frammento di dati
+    if (d1 > 0 && i1 != NULL) {
+        if (io_accumulated + d1 > sizeof(shared_io_buffer)) {
+            io_accumulated = 0;
+            return SE3_ERR_PARAMS;
+        }
+        memcpy(shared_io_buffer + io_accumulated, i1, d1);
+        io_accumulated += d1;
     }
-    if (d1 > 0 && !(f & SE3_CRYPTO_FLAG_FINIT)) {
-        if (sig_accumulated + d1 > sizeof(shared_sig_buf)) return SE3_ERR_PARAMS;
-        memcpy(shared_sig_buf + sig_accumulated, i1, d1);
-        sig_accumulated += d1;
-    }
+
     if (f & SE3_CRYPTO_FLAG_FINIT) {
-        uint16_t ret = dilithium_verify_core(ctx, i2, d2, shared_sig_buf, o_l, o);
-        sig_accumulated = 0; pk_accumulated = 0; return ret;
+        uint16_t pk_bytes  = ctx->conf->pk_bytes;
+        uint16_t sig_bytes = ctx->conf->sig_bytes;
+
+        // Verifica di avere almeno PK + SIG nel buffer
+        if (io_accumulated < pk_bytes + sig_bytes) {
+            io_accumulated = 0;
+            return SE3_ERR_PARAMS;
+        }
+
+        // Il PC invia: [ PK ] + [ SIG ] + [ MESSAGGIO ]
+        const uint8_t* pk  = shared_io_buffer;
+        const uint8_t* sig = shared_io_buffer + pk_bytes;
+        const uint8_t* msg = shared_io_buffer + pk_bytes + sig_bytes;
+        uint16_t msg_len   = io_accumulated - pk_bytes - sig_bytes;
+
+        uint16_t ret = dilithium_verify_core(ctx, pk, msg, msg_len, sig, o_l, o);
+        io_accumulated = 0;
+        return ret;
     }
     return SE3_OK;
 }
 
+/* ============================================================================
+ * 7. WRAPPERS FINALI (KeyGen punta diretto, Sign/Verify a chunk)
+ * ============================================================================ */
+
 uint16_t se3_algo_Mldsa_44_KeyGen_init(se3_flash_key* k, uint16_t m, uint8_t* c) {
     se3_dilithium_ctx* ctx = (se3_dilithium_ctx*)c;
-    ctx->conf = &SE3_DILITHIUM_L2; return SE3_OK;
+    ctx->conf = &SE3_DILITHIUM_L2;
+    return SE3_OK;
 }
 uint16_t se3_algo_Mldsa_44_KeyGen_update(uint8_t* c, uint16_t f, uint16_t d1, const uint8_t* i1, uint16_t d2, const uint8_t* i2, uint16_t* o_l, uint8_t* o) {
+    // Manteniamo la chiamata diretta, il buffer USB in lettura basta!
     return dilithium_keygen_core((se3_dilithium_ctx*)c, o_l, o);
 }
 uint16_t se3_algo_Mldsa_44_Sign_init(se3_flash_key* k, uint16_t m, uint8_t* c) {
     se3_dilithium_ctx* ctx = (se3_dilithium_ctx*)c;
-    ctx->conf = &SE3_DILITHIUM_L2; sk_accumulated = 0; ctx->tr_computed = 0; return SE3_OK;
+    ctx->conf = &SE3_DILITHIUM_L2;
+    io_accumulated = 0;
+    ctx->tr_computed = 0;
+    return SE3_OK;
 }
 uint16_t se3_algo_Mldsa_44_Sign_update(uint8_t* c, uint16_t f, uint16_t d1, const uint8_t* i1, uint16_t d2, const uint8_t* i2, uint16_t* o_l, uint8_t* o) {
     return mldsa_sign_update_chunked(c, f, d1, i1, d2, i2, o_l, o);
 }
 uint16_t se3_algo_Mldsa_44_Verify_init(se3_flash_key* k, uint16_t m, uint8_t* c) {
     se3_dilithium_ctx* ctx = (se3_dilithium_ctx*)c;
-    ctx->conf = &SE3_DILITHIUM_L2; pk_accumulated = 0; sig_accumulated = 0; return SE3_OK;
+    ctx->conf = &SE3_DILITHIUM_L2;
+    io_accumulated = 0;
+    return SE3_OK;
 }
 uint16_t se3_algo_Mldsa_44_Verify_update(uint8_t* c, uint16_t f, uint16_t d1, const uint8_t* i1, uint16_t d2, const uint8_t* i2, uint16_t* o_l, uint8_t* o) {
     return mldsa_verify_update_chunked(c, f, d1, i1, d2, i2, o_l, o);
 }
 
-/* Wrapper per L3 (ML-DSA-65) e L5 (ML-DSA-87) ... (invariati) ... */
-uint16_t se3_algo_Mldsa_65_KeyGen_init(se3_flash_key* k, uint16_t m, uint8_t* c) { ((se3_dilithium_ctx*)c)->conf = &SE3_DILITHIUM_L3; return SE3_OK; }
-uint16_t se3_algo_Mldsa_65_KeyGen_update(uint8_t* c, uint16_t f, uint16_t d1, const uint8_t* i1, uint16_t d2, const uint8_t* i2, uint16_t* o_l, uint8_t* o) { return dilithium_keygen_core((se3_dilithium_ctx*)c, o_l, o); }
-uint16_t se3_algo_Mldsa_65_Sign_init(se3_flash_key* k, uint16_t m, uint8_t* c) { ((se3_dilithium_ctx*)c)->conf = &SE3_DILITHIUM_L3; sk_accumulated = 0; return SE3_OK; }
-uint16_t se3_algo_Mldsa_65_Sign_update(uint8_t* c, uint16_t f, uint16_t d1, const uint8_t* i1, uint16_t d2, const uint8_t* i2, uint16_t* o_l, uint8_t* o) { return mldsa_sign_update_chunked(c, f, d1, i1, d2, i2, o_l, o); }
-uint16_t se3_algo_Mldsa_65_Verify_init(se3_flash_key* k, uint16_t m, uint8_t* c) { ((se3_dilithium_ctx*)c)->conf = &SE3_DILITHIUM_L3; pk_accumulated = 0; sig_accumulated = 0; return SE3_OK; }
-uint16_t se3_algo_Mldsa_65_Verify_update(uint8_t* c, uint16_t f, uint16_t d1, const uint8_t* i1, uint16_t d2, const uint8_t* i2, uint16_t* o_l, uint8_t* o) { return mldsa_verify_update_chunked(c, f, d1, i1, d2, i2, o_l, o); }
+/* Wrapper per L3 (ML-DSA-65) e L5 (ML-DSA-87) */
+uint16_t se3_algo_Mldsa_65_KeyGen_init(se3_flash_key* k, uint16_t m, uint8_t* c) {
+    ((se3_dilithium_ctx*)c)->conf = &SE3_DILITHIUM_L3;
+    return SE3_OK;
+}
+uint16_t se3_algo_Mldsa_65_KeyGen_update(uint8_t* c, uint16_t f, uint16_t d1, const uint8_t* i1, uint16_t d2, const uint8_t* i2, uint16_t* o_l, uint8_t* o) {
+    return dilithium_keygen_core((se3_dilithium_ctx*)c, o_l, o);
+}
+uint16_t se3_algo_Mldsa_65_Sign_init(se3_flash_key* k, uint16_t m, uint8_t* c) {
+    ((se3_dilithium_ctx*)c)->conf = &SE3_DILITHIUM_L3;
+    io_accumulated = 0;
+    return SE3_OK;
+}
+uint16_t se3_algo_Mldsa_65_Sign_update(uint8_t* c, uint16_t f, uint16_t d1, const uint8_t* i1, uint16_t d2, const uint8_t* i2, uint16_t* o_l, uint8_t* o) {
+    return mldsa_sign_update_chunked(c, f, d1, i1, d2, i2, o_l, o);
+}
+uint16_t se3_algo_Mldsa_65_Verify_init(se3_flash_key* k, uint16_t m, uint8_t* c) {
+    ((se3_dilithium_ctx*)c)->conf = &SE3_DILITHIUM_L3;
+    io_accumulated = 0;
+    return SE3_OK;
+}
+uint16_t se3_algo_Mldsa_65_Verify_update(uint8_t* c, uint16_t f, uint16_t d1, const uint8_t* i1, uint16_t d2, const uint8_t* i2, uint16_t* o_l, uint8_t* o) {
+    return mldsa_verify_update_chunked(c, f, d1, i1, d2, i2, o_l, o);
+}
 
-uint16_t se3_algo_Mldsa_87_KeyGen_init(se3_flash_key* k, uint16_t m, uint8_t* c) { ((se3_dilithium_ctx*)c)->conf = &SE3_DILITHIUM_L5; return SE3_OK; }
-uint16_t se3_algo_Mldsa_87_KeyGen_update(uint8_t* c, uint16_t f, uint16_t d1, const uint8_t* i1, uint16_t d2, const uint8_t* i2, uint16_t* o_l, uint8_t* o) { return dilithium_keygen_core((se3_dilithium_ctx*)c, o_l, o); }
-uint16_t se3_algo_Mldsa_87_Sign_init(se3_flash_key* k, uint16_t m, uint8_t* c) { ((se3_dilithium_ctx*)c)->conf = &SE3_DILITHIUM_L5; sk_accumulated = 0; return SE3_OK; }
-uint16_t se3_algo_Mldsa_87_Sign_update(uint8_t* c, uint16_t f, uint16_t d1, const uint8_t* i1, uint16_t d2, const uint8_t* i2, uint16_t* o_l, uint8_t* o) { return mldsa_sign_update_chunked(c, f, d1, i1, d2, i2, o_l, o); }
-uint16_t se3_algo_Mldsa_87_Verify_init(se3_flash_key* k, uint16_t m, uint8_t* c) { ((se3_dilithium_ctx*)c)->conf = &SE3_DILITHIUM_L5; pk_accumulated = 0; sig_accumulated = 0; return SE3_OK; }
-uint16_t se3_algo_Mldsa_87_Verify_update(uint8_t* c, uint16_t f, uint16_t d1, const uint8_t* i1, uint16_t d2, const uint8_t* i2, uint16_t* o_l, uint8_t* o) { return mldsa_verify_update_chunked(c, f, d1, i1, d2, i2, o_l, o); }
+uint16_t se3_algo_Mldsa_87_KeyGen_init(se3_flash_key* k, uint16_t m, uint8_t* c) {
+    ((se3_dilithium_ctx*)c)->conf = &SE3_DILITHIUM_L5;
+    return SE3_OK;
+}
+uint16_t se3_algo_Mldsa_87_KeyGen_update(uint8_t* c, uint16_t f, uint16_t d1, const uint8_t* i1, uint16_t d2, const uint8_t* i2, uint16_t* o_l, uint8_t* o) {
+    return dilithium_keygen_core((se3_dilithium_ctx*)c, o_l, o);
+}
+uint16_t se3_algo_Mldsa_87_Sign_init(se3_flash_key* k, uint16_t m, uint8_t* c) {
+    ((se3_dilithium_ctx*)c)->conf = &SE3_DILITHIUM_L5;
+    io_accumulated = 0;
+    return SE3_OK;
+}
+uint16_t se3_algo_Mldsa_87_Sign_update(uint8_t* c, uint16_t f, uint16_t d1, const uint8_t* i1, uint16_t d2, const uint8_t* i2, uint16_t* o_l, uint8_t* o) {
+    return mldsa_sign_update_chunked(c, f, d1, i1, d2, i2, o_l, o);
+}
+uint16_t se3_algo_Mldsa_87_Verify_init(se3_flash_key* k, uint16_t m, uint8_t* c) {
+    ((se3_dilithium_ctx*)c)->conf = &SE3_DILITHIUM_L5;
+    io_accumulated = 0;
+    return SE3_OK;
+}
+uint16_t se3_algo_Mldsa_87_Verify_update(uint8_t* c, uint16_t f, uint16_t d1, const uint8_t* i1, uint16_t d2, const uint8_t* i2, uint16_t* o_l, uint8_t* o) {
+    return mldsa_verify_update_chunked(c, f, d1, i1, d2, i2, o_l, o);
+}

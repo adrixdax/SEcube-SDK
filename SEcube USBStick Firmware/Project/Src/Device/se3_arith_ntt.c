@@ -1,8 +1,7 @@
 #include "se3_arith_ntt.h"
 #include <stdint.h>
 
-#define ML_DSA_NUM_POLY_COEFFICIENTS 256
-#define ML_DSA_Q 8380417
+#include "se3_algo_mldsa_params.h"
 
 // IL VERO EROE DEL FIX: 4294967296 - 58728449
 #define ML_DSA_Q_NEG_INV 4236238847U
@@ -47,83 +46,141 @@ static const uint32_t zetas_montgomery[256] = {
 
 static inline uint32_t reduce_montgomery(uint64_t a) {
     uint64_t t = (uint32_t)a * ML_DSA_Q_NEG_INV;
-    uint64_t b = a + t * ML_DSA_Q;
+    uint64_t b = a + t * DIL_Q;
     uint32_t c = (uint32_t)(b >> 32);
-    return (c >= ML_DSA_Q) ? (c - ML_DSA_Q) : c;
+    return (c >= DIL_Q) ? (c - DIL_Q) : c;
 }
 
 static inline uint32_t mod_add(uint32_t a, uint32_t b) {
-    uint32_t c = a + b;
-    return (c >= ML_DSA_Q) ? (c - ML_DSA_Q) : c;
+    int32_t c = a + b - DIL_Q;
+return c + ((c >> 31) & DIL_Q);
 }
 
 static inline uint32_t mod_sub(uint32_t a, uint32_t b) {
-    return (a >= b) ? (a - b) : (a + ML_DSA_Q - b);
-}
+int32_t c = a - b;
+return c + ((c >> 31) & DIL_Q);}
 
 /* --- NTT e INTT --- */
 
-void ntt(int32_t p[ML_DSA_NUM_POLY_COEFFICIENTS]) {
-    uint32_t* up = (uint32_t*)p;
+void ntt(int32_t p[DIL_N]) {
     int i, j, k, step;
-    int offset = ML_DSA_NUM_POLY_COEFFICIENTS;
+    int offset = DIL_N;
 
-    // Sanitizzazione: Mappa da -Q a 0 in [0, Q-1]
-    for (i = 0; i < ML_DSA_NUM_POLY_COEFFICIENTS; i++) {
+    for (i = 0; i < DIL_N; i++) {
         int32_t a = p[i];
-        a += (a >> 31) & ML_DSA_Q;
-        up[i] = (uint32_t)a;
+        int32_t t = (a + (1 << 22)) >> 23;
+        a = a - t * DIL_Q;
+        a += (a >> 31) & DIL_Q;
+        p[i] = a;
     }
 
-    for (step = 1; step < ML_DSA_NUM_POLY_COEFFICIENTS; step <<= 1) {
+    for (step = 1; step < DIL_N; step <<= 1) {
         k = 0;
         offset >>= 1;
         for (i = 0; i < step; i++) {
-            const uint32_t z_step_root = zetas_montgomery[step + i];
-
+            const int32_t z_step_root = zetas_montgomery[step + i];
+            int32_t * __restrict__ pj = &p[k];
+            int32_t * __restrict__ pj_off = &p[k + offset];
             for (j = k; j < k + offset; j++) {
-                uint32_t w_even = up[j];
-                uint32_t t_odd = reduce_montgomery((uint64_t)z_step_root * up[j + offset]);
-
-                up[j] = mod_add(w_even, t_odd);
-                up[j + offset] = mod_sub(w_even, t_odd);
+                int32_t w_even = *pj;
+                int32_t t_odd = reduce_montgomery((int64_t)z_step_root * (*pj_off));
+                *pj++     = mod_add(w_even, t_odd);
+                *pj_off++ = mod_sub(w_even, t_odd);
             }
             k += 2 * offset;
         }
     }
 }
 
-void invntt_tomont(int32_t p[ML_DSA_NUM_POLY_COEFFICIENTS]) {
-    uint32_t* up = (uint32_t*)p;
+void invntt(int32_t p[DIL_N]) {
     int i, j, k, offset;
-    int step = ML_DSA_NUM_POLY_COEFFICIENTS;
-    static const uint32_t inverse_degree_montgomery = 41978;
+    int step = DIL_N;
+    static const int32_t inverse_degree = 8347681;
 
-    // Sanitizzazione
-    for (i = 0; i < ML_DSA_NUM_POLY_COEFFICIENTS; i++) {
-        int32_t a = p[i];
-        a += (a >> 31) & ML_DSA_Q;
-        up[i] = (uint32_t)a;
+    // =========================================================================
+    // 1. SANITIZZAZIONE CONSTANT-TIME
+    // Niente '%', niente 'if'. Usa Barrett e CADDQ con i puntatori.
+    // =========================================================================
+    int32_t * __restrict__ pp = p;
+    for (i = 0; i < DIL_N; i++) {
+        int32_t a = *pp;
+        int32_t t = (a + (1 << 22)) >> 23;
+        a = a - t * DIL_Q;
+        *pp++ = a + ((a >> 31) & DIL_Q);
     }
 
-    for (offset = 1; offset < ML_DSA_NUM_POLY_COEFFICIENTS; offset <<= 1) {
+    // =========================================================================
+    // 2. CICLO BUTTERFLY (INTT - Gentleman-Sande)
+    // Sfrutta i puntatori per LDR/STR veloci e le funzioni inline sicure
+    // =========================================================================
+    for (offset = 1; offset < DIL_N; offset <<= 1) {
         step >>= 1;
         k = 0;
         for (i = 0; i < step; i++) {
-            const uint32_t step_root = ML_DSA_Q - zetas_montgomery[step + (step - 1 - i)];
-
+            const int32_t step_root = DIL_Q - zetas_montgomery[step + (step - 1 - i)];
+            int32_t * __restrict__ pj = &p[k];
+            int32_t * __restrict__ pj_off = &p[k + offset];
             for (j = k; j < k + offset; j++) {
-                uint32_t even = up[j];
-                uint32_t odd = up[j + offset];
-
-                up[j] = mod_add(odd, even);
-                up[j + offset] = reduce_montgomery((uint64_t)step_root * mod_sub(even, odd));
+                int32_t even = *pj;
+                int32_t odd = *pj_off;
+                *pj++ = mod_add(even, odd);
+                int32_t sub = mod_sub(even, odd);
+                *pj_off++ = reduce_montgomery((int64_t)step_root * sub);
             }
             k += 2 * offset;
         }
     }
+    pp = p; // Resettiamo il puntatore all'inizio dell'array
+    for (i = 0; i < DIL_N / 2; i++) {
+        int32_t v0 = pp[0];
+        int32_t v1 = pp[1];
+        v0 = reduce_montgomery((int64_t)v0 * inverse_degree);
+        v1 = reduce_montgomery((int64_t)v1 * inverse_degree);
+        pp[0] = v0 + ((v0 >> 31) & DIL_Q);
+        pp[1] = v1 + ((v1 >> 31) & DIL_Q);
+        pp += 2;
+    }
+}
 
-    for (i = 0; i < ML_DSA_NUM_POLY_COEFFICIENTS; i++) {
-        up[i] = reduce_montgomery((uint64_t)up[i] * inverse_degree_montgomery);
+void invntt_tomont(int32_t p[DIL_N]) {
+    int i, j, k, offset;
+    int step = DIL_N;
+    static const int32_t inverse_degree_montgomery = 41978;
+
+    // =========================================================================
+    // 1. SANITIZZAZIONE CONSTANT-TIME
+    // Via le divisioni hardware (%) e i branch (if)
+    // =========================================================================
+    int32_t * __restrict__ pp = p;
+    for (i = 0; i < DIL_N; i++) {
+        int32_t a = *pp;
+        int32_t t = (a + (1 << 22)) >> 23;
+        a = a - t * DIL_Q;
+        *pp++ = a + ((a >> 31) & DIL_Q);
+    }
+    for (offset = 1; offset < DIL_N; offset <<= 1) {
+        step >>= 1;
+        k = 0;
+        for (i = 0; i < step; i++) {
+            const int32_t step_root = DIL_Q - zetas_montgomery[step + (step - 1 - i)];
+            int32_t * __restrict__ pj = &p[k];
+            int32_t * __restrict__ pj_off = &p[k + offset];
+            for (j = k; j < k + offset; j++) {
+                int32_t even = *pj;
+                int32_t odd = *pj_off;
+                *pj++ = mod_add(even, odd);
+                int32_t sub = mod_sub(even, odd);
+                *pj_off++ = reduce_montgomery((int64_t)step_root * sub);
+            }
+            k += 2 * offset;
+        }
+    }
+    pp = p;
+    for (i = 0; i < DIL_N / 2; i++) {
+        int32_t v0 = pp[0];
+        int32_t v1 = pp[1];
+        pp[0] = reduce_montgomery((int64_t)v0 * inverse_degree_montgomery);
+        pp[1] = reduce_montgomery((int64_t)v1 * inverse_degree_montgomery);
+        pp += 2;
     }
 }

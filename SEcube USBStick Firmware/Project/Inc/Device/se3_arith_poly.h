@@ -14,6 +14,9 @@ typedef struct {
     int32_t coeffs[DIL_N] __attribute__((aligned(8)));
 } poly;
 
+void poly_center_inplace(poly *a);
+void poly_mul_sparse(poly *res, const poly *c, const poly *s);
+
 /* ========================================================================= *
  * Funzioni di Aritmetica Polinomiale (Ottimizzate Cortex-M4)
  * ========================================================================= */
@@ -43,7 +46,7 @@ void poly_use_hint(poly *b, const poly *a, const poly *h, const dilithium_conf_t
 /* ========================================================================= *
  * Funzioni di Campionamento e Controllo (Rejection Sampling)
  * ========================================================================= */
-int poly_chknorm(const poly *a, int32_t B);
+int poly_chknorm(const poly *a, uint32_t B);
 void poly_challenge(poly *c, const uint8_t *seed, const dilithium_conf_t *conf);
 
 void poly_uniform(poly *a, const uint8_t seed[DIL_SEEDBYTES], uint16_t nonce);

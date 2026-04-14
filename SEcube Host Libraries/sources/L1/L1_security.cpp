@@ -839,10 +839,5 @@ bool L1::L1_ML_DSA_Verify(uint16_t level, const std::vector<uint8_t>& msg,
             is_last ? result.data() : dummy_out.data()
         );
     }
-
-    std::cout << "[DEBUG L1] Verify Payload Totale: " << payload.size()
-              << " bytes | outLen: " << outLen
-              << " | result[0]: " << (int)result[0] << std::endl;
-
     return (outLen > 0 && result[0] == 0);
 }

@@ -42,7 +42,7 @@ static USE_CCRAM_SECTION keccak_state global_st;
 static USE_CCRAM_SECTION uint8_t global_v_buf[DIL_STREAM128_BLOCKBYTES + 4];
 
 /* Buffer unificato per accumulo chunked (max tra SK, SIG, PK) */
-static USE_CCRAM_SECTION uint8_t shared_io_buffer[5000];
+static USE_CCRAM_SECTION uint8_t shared_io_buffer[10000];
 static uint16_t io_accumulated = 0;
 
 /* Matrice statica per evitare allocazione locale in sign/verify/keygen */
@@ -154,7 +154,6 @@ static uint16_t dilithium_sign_core(se3_dilithium_ctx *ctx, uint16_t msg_len, ui
                              const uint8_t *msg, const uint8_t *sk,
                              uint16_t *sig_len, uint8_t *sig) {
     const dilithium_conf_t *conf = ctx->conf;
-
     uint8_t rho[32], tr[64], key[32], mu[64], rhoprime[64], c_tilde[64];
     uint16_t nonce = 0;
 
@@ -163,18 +162,6 @@ static uint16_t dilithium_sign_core(se3_dilithium_ctx *ctx, uint16_t msg_len, ui
     memcpy(tr, sk + 64, 64);
 
     polyvec_matrix_expand(mat_ws, rho, conf);
-
-    polyvecl s1;
-    for (unsigned int i = 0; i < conf->l; i++) {
-        polyeta_unpack(&s1.vec[i], sk + 128 + i * conf->polyeta_packed, conf);
-    }
-
-    polyveck s2_base, t0_base;
-    for (unsigned int i = 0; i < conf->k; i++) {
-        polyeta_unpack(&s2_base.vec[i], sk + 128 + conf->l * conf->polyeta_packed + i * conf->polyeta_packed, conf);
-        int t0_offset = 128 + (conf->l + conf->k) * conf->polyeta_packed + i * 416;
-        polyt0_unpack(&t0_base.vec[i], sk + t0_offset);
-    }
 
     keccak_state shake_ctx;
     shake256_init(&shake_ctx);
@@ -192,21 +179,20 @@ static uint16_t dilithium_sign_core(se3_dilithium_ctx *ctx, uint16_t msg_len, ui
     polyvecl *y_hat  = &shared_vl2;
     polyveck *w      = &shared_vk1;
     poly      *c_hat = &shared_cp;
-
     polyveck *w1_vec = &shared_vk2;
     polyveck *w0_vec = &shared_vk3;
-
     polyvecl *z      = y;
     polyveck *w_minus_cs2 = w;
 
-    uint8_t pk_buf[4 * 192];
+    uint8_t *pk_buf = (uint8_t*)&shared_vk4;
 
-    while (nonce < 814) {
+    // Polinomio temporaneo locale (1024 byte) – OK per stack
+    poly tmp_poly;
+
+    while (nonce < 1628) {
         polyvecl_uniform_gamma1(y, rhoprime, nonce++, conf);
-
         *y_hat = *y;
         polyvecl_ntt(y_hat, conf);
-
         polyvec_matrix_pointwise_montgomery(w, mat_ws, y_hat, conf);
         polyveck_invntt_tomont(w, conf);
         polyveck_reduce(w, conf);
@@ -215,7 +201,6 @@ static uint16_t dilithium_sign_core(se3_dilithium_ctx *ctx, uint16_t msg_len, ui
         for (unsigned int i = 0; i < conf->k; i++) {
             poly_decompose(&w1_vec->vec[i], &w0_vec->vec[i], &w->vec[i], conf);
         }
-
         for (unsigned int i = 0; i < conf->k; i++) {
             polyw1_pack(pk_buf + i * conf->polyw1_packed, &w1_vec->vec[i], conf);
         }
@@ -229,19 +214,20 @@ static uint16_t dilithium_sign_core(se3_dilithium_ctx *ctx, uint16_t msg_len, ui
         memset(c_hat, 0, sizeof(poly));
         poly_challenge_fips(c_hat, c_tilde, conf);
 
+        // Calcolo di z = y + c*s1 (decompressione on‑the‑fly)
         for (unsigned int i = 0; i < conf->l; i++) {
-            poly_mul_sparse(&shared_tmp_poly, c_hat, &s1.vec[i]);
+            polyeta_unpack(&tmp_poly, sk + 128 + i * conf->polyeta_packed, conf);
+            poly_mul_sparse(&shared_tmp_poly, c_hat, &tmp_poly);
             for (int j = 0; j < 256; j++) {
                 z->vec[i].coeffs[j] = y->vec[i].coeffs[j] + shared_tmp_poly.coeffs[j];
             }
         }
+        if (polyvecl_chknorm(z, conf->gamma1 - conf->beta, conf)) continue;
 
-        if (polyvecl_chknorm(z, conf->gamma1 - conf->beta, conf)) {
-            continue;
-        }
-
+        // Calcolo di w_minus_cs2 = w - c*s2
         for (unsigned int i = 0; i < conf->k; i++) {
-            poly_mul_sparse(&shared_tmp_poly, c_hat, &s2_base.vec[i]);
+            polyeta_unpack(&tmp_poly, sk + 128 + conf->l * conf->polyeta_packed + i * conf->polyeta_packed, conf);
+            poly_mul_sparse(&shared_tmp_poly, c_hat, &tmp_poly);
             poly_sub(&shared_tmp_poly, &w->vec[i], &shared_tmp_poly);
             poly_reduce(&shared_tmp_poly);
             w_minus_cs2->vec[i] = shared_tmp_poly;
@@ -254,15 +240,15 @@ static uint16_t dilithium_sign_core(se3_dilithium_ctx *ctx, uint16_t msg_len, ui
             poly_caddq(&tmp);
             poly_decompose(&r1_vec->vec[i], &r0_vec->vec[i], &tmp, conf);
         }
+        if (polyveck_chknorm(r0_vec, conf->gamma2 - conf->beta, conf)) continue;
 
-        if (polyveck_chknorm(r0_vec, conf->gamma2 - conf->beta, conf)) {
-            continue;
-        }
-
+        // Calcolo di ct0 = c * t0
         polyveck *ct0_vec      = &shared_vk3;
         polyveck *ct0_centered = &shared_vk4;
         for (unsigned int i = 0; i < conf->k; i++) {
-            poly_mul_sparse(&ct0_vec->vec[i], c_hat, &t0_base.vec[i]);
+            int t0_offset = 128 + (conf->l + conf->k) * conf->polyeta_packed + i * 416;
+            polyt0_unpack(&tmp_poly, sk + t0_offset);
+            poly_mul_sparse(&ct0_vec->vec[i], c_hat, &tmp_poly);
             poly_reduce(&ct0_vec->vec[i]);
         }
         *ct0_centered = *ct0_vec;
@@ -274,10 +260,7 @@ static uint16_t dilithium_sign_core(se3_dilithium_ctx *ctx, uint16_t msg_len, ui
                 ct0_centered->vec[i].coeffs[j] = val;
             }
         }
-
-        if (polyveck_chknorm(ct0_centered, conf->gamma2, conf)) {
-            continue;
-        }
+        if (polyveck_chknorm(ct0_centered, conf->gamma2, conf)) continue;
 
         polyveck *r_vec        = w;
         polyveck *r_plus_z_vec = &shared_vk2;
@@ -285,10 +268,8 @@ static uint16_t dilithium_sign_core(se3_dilithium_ctx *ctx, uint16_t msg_len, ui
             for (int j = 0; j < 256; j++) {
                 int32_t val_w_cs2 = w_minus_cs2->vec[i].coeffs[j] % DIL_Q;
                 if (val_w_cs2 < 0) val_w_cs2 += DIL_Q;
-
                 int32_t val_ct0 = ct0_vec->vec[i].coeffs[j] % DIL_Q;
                 if (val_ct0 < 0) val_ct0 += DIL_Q;
-
                 r_plus_z_vec->vec[i].coeffs[j] = val_w_cs2;
                 r_vec->vec[i].coeffs[j] = (val_w_cs2 + val_ct0) % DIL_Q;
             }
@@ -318,10 +299,7 @@ static uint16_t dilithium_sign_core(se3_dilithium_ctx *ctx, uint16_t msg_len, ui
                 }
             }
         }
-
-        if (hints > conf->omega) {
-            continue;
-        }
+        if (hints > conf->omega) continue;
 
         pack_sig(sig, c_tilde, z, h_vec, conf);
         *sig_len = conf->sig_bytes;
@@ -392,7 +370,7 @@ static uint16_t dilithium_verify_core(se3_dilithium_ctx* ctx, const uint8_t* pk,
 
     polyveck_use_hint(w1_recon, w1, h, ctx->conf);
 
-    uint8_t pk_buf[DIL_K_MAX * 192];
+    uint8_t *pk_buf = shared_io_buffer;
     for (unsigned int i = 0; i < ctx->conf->k; i++) {
         polyw1_pack(pk_buf + i * ctx->conf->polyw1_packed, &w1_recon->vec[i], ctx->conf);
     }

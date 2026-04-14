@@ -42,7 +42,7 @@ add_executable(SEcube_SDK
         "${HOST_LIB_DIR}/L1/Crypto Libraries/pbkdf2.c"
 
         # 5. ENTRY POINT (Il test che stai compilando)
-        "SEcube Host Libraries/examples/dilithium_call.cpp"
-        #"SEcube Host Libraries/examples/FullDilithiumTest.cpp"
+        #"SEcube Host Libraries/examples/dilithium2_call.cpp"
+        "SEcube Host Libraries/examples/FullDilithiumTest.cpp"
 )
 
